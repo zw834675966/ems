@@ -16,6 +16,11 @@
 
 可选环境变量：
 - `EMS_HTTP_ADDR`：监听地址，默认 `127.0.0.1:8080`。
+- `EMS_REDIS_URL`：本地健康检查使用的 Redis 连接串，默认 `redis://default:admin123@localhost:6379`。
+- `EMS_MQTT_HOST`：本地健康检查使用的 MQTT 主机，默认 `127.0.0.1`。
+- `EMS_MQTT_PORT`：本地健康检查使用的 MQTT 端口，默认 `1883`。
+- `EMS_MQTT_USERNAME`：本地健康检查使用的 MQTT 用户名，默认 `ems`。
+- `EMS_MQTT_PASSWORD`：本地健康检查使用的 MQTT 密码，默认 `admin123`。
 
 ```bash
 export EMS_DATABASE_URL="postgresql://ems:admin123@localhost:5432/ems"
@@ -41,6 +46,10 @@ scripts/health-check.sh
 ```bash
 scripts/db-init.sh
 ```
+
+## 依赖默认账号（本地）
+- Redis：`default` / `admin123`
+- MQTT（Mosquitto）：`ems` / `admin123`
 
 ## 接口说明
 - `POST /login`（兼容 `/api/login`）：登录，返回 access/refresh token。

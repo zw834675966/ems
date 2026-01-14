@@ -9,6 +9,11 @@ EMS_JWT_ACCESS_TTL_SECONDS="3600"
 EMS_JWT_REFRESH_TTL_SECONDS="2592000"
 EMS_HTTP_ADDR="127.0.0.1:8080"
 EMS_DATABASE_URL="postgresql://ems:admin123@localhost:5432/ems"
+EMS_REDIS_URL="redis://default:admin123@localhost:6379"
+EMS_MQTT_HOST="127.0.0.1"
+EMS_MQTT_PORT="1883"
+EMS_MQTT_USERNAME="ems"
+EMS_MQTT_PASSWORD="admin123"
 ```
 
 说明：
@@ -16,3 +21,5 @@ EMS_DATABASE_URL="postgresql://ems:admin123@localhost:5432/ems"
 - `EMS_JWT_ACCESS_TTL_SECONDS` 设置 access token 有效期为 1 小时。
 - `EMS_JWT_REFRESH_TTL_SECONDS` 设置 refresh token 有效期为 30 天。
 - `EMS_DATABASE_URL` 使用本地 Postgres 连接串。
+- `EMS_REDIS_URL` 使用本地 Redis ACL 连接串。
+- `EMS_MQTT_*` 为本地 Mosquitto 账号配置。

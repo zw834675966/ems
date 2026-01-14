@@ -70,7 +70,12 @@ PostgreSQL:
 
 Redis:
 - 版本: 7.0.15 (Ubuntu 包)
-- ACL: user default on nopass ~* &* +@all (来自 ACL LIST)
+- ACL: user default on >admin123 ~* +@all；user ems on >admin123 ~* +@all
+
+MQTT (Mosquitto):
+- 版本: 2.0.18 (Ubuntu 包)
+- 用户名: ems
+- 密码: admin123
 
 ## 服务检查
 - PostgreSQL:
@@ -81,7 +86,8 @@ Redis:
 - 统一脚本:
   - scripts/db-init.sh
   - scripts/health-check.sh
-  - health-check 可选环境变量: EMS_REDIS_URL, EMS_MQTT_HOST, EMS_MQTT_PORT
+  - health-check 可选环境变量: EMS_REDIS_URL, EMS_MQTT_HOST, EMS_MQTT_PORT, EMS_MQTT_USERNAME, EMS_MQTT_PASSWORD
+  - 默认 Redis URL: redis://default:admin123@localhost:6379
 
 ## EMS API（无 DB 阶段）
 - 默认账号: admin / admin123
