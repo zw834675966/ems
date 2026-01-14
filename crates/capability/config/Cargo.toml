@@ -1,0 +1,9 @@
+[package]
+name = "ems-config"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92.0"
+publish = false
+
+[dependencies]
+thiserror = { workspace = true }

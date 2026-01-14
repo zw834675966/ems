@@ -1,7 +1,7 @@
 # API 契约与前端对接（pure-admin-thin + EMS）
 
 ## 1. 全局约定
-- Base URL：/api
+- Base URL：/（兼容 /api 前缀）
 - 认证：Authorization: Bearer <access_token>
 - 响应结构：ApiResponse<T>（success/data/error）
 - 错误码：稳定字符串（如 AUTH.INVALID_TOKEN）
@@ -13,7 +13,7 @@
 - resp：
   - accessToken
   - refreshToken
-  - expires（时间戳或秒）
+  - expires（毫秒时间戳，Unix ms）
   - username / nickname / avatar
   - roles: []
   - permissions: []（按钮权限码）

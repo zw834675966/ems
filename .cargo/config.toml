@@ -1,0 +1,7 @@
+[build]
+target-dir = "target"
+
+[target.'cfg(target_os = "linux")']
+# Uncomment if you have a faster linker installed (lld or mold).
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]

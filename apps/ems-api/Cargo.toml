@@ -1,0 +1,22 @@
+[package]
+name = "ems-api"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92.0"
+publish = false
+
+[dependencies]
+api-contract = { workspace = true }
+axum = { workspace = true }
+dotenvy = { workspace = true }
+ems-auth = { workspace = true }
+ems-config = { workspace = true }
+ems-storage = { workspace = true }
+ems-telemetry = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+domain = { workspace = true }

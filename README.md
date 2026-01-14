@@ -78,23 +78,30 @@ Redis:
   - psql "postgresql://ems:admin123@localhost:5432/ems" -c "select 1;"
 - Redis:
   - redis-cli -u redis://localhost:6379 ping
+- 统一脚本:
+  - scripts/db-init.sh
+  - scripts/health-check.sh
+  - health-check 可选环境变量: EMS_REDIS_URL, EMS_MQTT_HOST, EMS_MQTT_PORT
 
 ## EMS API（无 DB 阶段）
 - 默认账号: admin / admin123
 - JWT 配置: EMS_JWT_SECRET, EMS_JWT_ACCESS_TTL_SECONDS, EMS_JWT_REFRESH_TTL_SECONDS
-- 说明: 当前为纯内存认证，后续工单再接入数据库用户表
+- 数据库配置: EMS_DATABASE_URL
+- 说明: 当前登录使用 Postgres 用户表（需先执行 migrations/seed）
+- 接口路径兼容 `/login` 与 `/api/login`（同理适用于 refresh-token/get-async-routes）
+- `expires` 为 Unix 毫秒时间戳
 
 ### 认证接口验证
 1) 登录获取 access/refresh token:
-   - curl -sS -X POST http://localhost:8080/api/login \\
+   - curl -sS -X POST http://localhost:8080/login \\
      -H "Content-Type: application/json" \\
      -d '{"username":"admin","password":"admin123"}'
 2) 刷新 access token:
-   - curl -sS -X POST http://localhost:8080/api/refresh-token \\
+   - curl -sS -X POST http://localhost:8080/refresh-token \\
      -H "Content-Type: application/json" \\
      -d '{"refreshToken":"<refreshToken>"}'
 3) 获取动态路由（需 Bearer access token）:
-   - curl -sS http://localhost:8080/api/get-async-routes \\
+   - curl -sS http://localhost:8080/get-async-routes \\
      -H "Authorization: Bearer <accessToken>"
 
 ## 备注
