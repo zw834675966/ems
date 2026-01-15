@@ -1,214 +1,139 @@
-//! M0 最小 HTTP API（登录/刷新/动态路由）与请求追踪 ID。
+//! EMS API 主入口
 
-use api_contract::{
-    ApiResponse, AsyncRoute, LoginRequest, LoginResponse, RefreshTokenRequest,
-    RefreshTokenResponse, RouteMeta,
-};
-use axum::{
-    body::Body,
-    extract::State,
-    http::{header, HeaderMap, HeaderValue, Request, StatusCode},
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
-    routing::{get, post},
-    Json, Router,
-};
-use ems_auth::{AuthError, AuthService, JwtManager};
+mod handlers;
+mod middleware;
+mod routes;
+mod utils;
+
+use axum::{Router, middleware as axum_middleware};
+use ems_auth::{AuthService, JwtManager};
 use ems_config::AppConfig;
-use ems_storage::PgUserStore;
-use ems_telemetry::{init_tracing, new_request_ids};
+use ems_storage::{
+    PgDeviceStore, PgGatewayStore, PgPointMappingStore, PgPointStore, PgProjectStore, PgUserStore,
+    connect_pool,
+};
+use ems_telemetry::init_tracing;
+use std::{env, path::PathBuf};
 use std::sync::Arc;
-use tracing::Instrument;
+use tokio::process::Command;
+use tracing::{info, warn};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WebAdminMode {
+    Off,
+    On,
+    Only,
+}
+
+impl WebAdminMode {
+    fn from_env() -> Self {
+        match env::var("EMS_WEB_ADMIN")
+            .unwrap_or_else(|_| "off".to_string())
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "1" | "true" | "on" => Self::On,
+            "only" => Self::Only,
+            _ => Self::Off,
+        }
+    }
+}
+
+fn spawn_web_admin() -> Result<tokio::process::Child, std::io::Error> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let web_admin_dir = manifest_dir.join("../..").join("web/admin");
+    if !web_admin_dir.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("web/admin not found at {:?}", web_admin_dir),
+        ));
+    }
+    Command::new("pnpm").arg("dev").current_dir(web_admin_dir).spawn()
+}
 
 #[derive(Clone)]
 struct AppState {
     auth: Arc<AuthService>,
+    project_store: Arc<dyn ems_storage::ProjectStore>,
+    gateway_store: Arc<dyn ems_storage::GatewayStore>,
+    device_store: Arc<dyn ems_storage::DeviceStore>,
+    point_store: Arc<dyn ems_storage::PointStore>,
+    point_mapping_store: Arc<dyn ems_storage::PointMappingStore>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 加载本地 .env（如存在），便于直接 cargo run 启动
     dotenvy::dotenv().ok();
-    // 从环境变量加载运行配置
     let config = AppConfig::from_env()?;
-    // 初始化结构化日志
     init_tracing();
 
-    // Postgres 用户存储（需先执行 migrations/seed）
-    let user_store = Arc::new(PgUserStore::connect(&config.database_url).await?);
-    // JWT 管理器
+    let web_admin_mode = WebAdminMode::from_env();
+    let mut web_admin_child = None;
+    if web_admin_mode != WebAdminMode::Off {
+        match spawn_web_admin() {
+            Ok(child) => {
+                info!("web/admin started via pnpm dev");
+                web_admin_child = Some(child);
+            }
+            Err(err) => {
+                warn!("failed to start web/admin: {}", err);
+                if web_admin_mode == WebAdminMode::Only {
+                    return Err(err.into());
+                }
+            }
+        }
+    }
+    if web_admin_mode == WebAdminMode::Only {
+        if let Some(mut child) = web_admin_child {
+            let _ = child.wait().await?;
+        }
+        return Ok(());
+    }
+    if let Some(mut child) = web_admin_child {
+        tokio::spawn(async move {
+            match child.wait().await {
+                Ok(status) => info!("web/admin exited: {}", status),
+                Err(err) => warn!("web/admin wait failed: {}", err),
+            }
+        });
+    }
+
+    let pool = connect_pool(&config.database_url).await?;
+    let user_store = Arc::new(PgUserStore::new(pool.clone()));
     let jwt = JwtManager::new(
         config.jwt_secret.clone(),
         config.jwt_access_ttl_seconds,
         config.jwt_refresh_ttl_seconds,
     );
     let auth = Arc::new(AuthService::new(user_store, jwt));
-    let state = AppState { auth };
 
-    // M0 路由：健康检查、登录、刷新、动态路由
+    let project_store: Arc<dyn ems_storage::ProjectStore> =
+        Arc::new(PgProjectStore::new(pool.clone()));
+    let gateway_store: Arc<dyn ems_storage::GatewayStore> =
+        Arc::new(PgGatewayStore::new(pool.clone()));
+    let device_store: Arc<dyn ems_storage::DeviceStore> =
+        Arc::new(PgDeviceStore::new(pool.clone()));
+    let point_store: Arc<dyn ems_storage::PointStore> = Arc::new(PgPointStore::new(pool.clone()));
+    let point_mapping_store: Arc<dyn ems_storage::PointMappingStore> =
+        Arc::new(PgPointMappingStore::new(pool));
+
+    let state = AppState {
+        auth,
+        project_store,
+        gateway_store,
+        device_store,
+        point_store,
+        point_mapping_store,
+    };
+
+    let api = routes::create_api_router();
     let app = Router::new()
-        .route("/health", get(health))
-        .route("/api/login", post(login))
-        .route("/login", post(login))
-        .route("/api/refresh-token", post(refresh_token))
-        .route("/refresh-token", post(refresh_token))
-        .route("/api/get-async-routes", get(get_async_routes))
-        .route("/get-async-routes", get(get_async_routes))
+        .merge(api.clone())
+        .nest("/api", api)
         .with_state(state)
-        // 注入 request_id/trace_id
-        .layer(middleware::from_fn(request_context));
+        .layer(axum_middleware::from_fn(middleware::request_context));
 
     let listener = tokio::net::TcpListener::bind(&config.http_addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
-}
-
-async fn health() -> impl IntoResponse {
-    Json(serde_json::json!({ "ok": true }))
-}
-
-async fn login(
-    State(state): State<AppState>,
-    Json(req): Json<LoginRequest>,
-) -> Response {
-    match state.auth.login(&req.username, &req.password).await {
-        Ok((user, tokens)) => {
-            let response = LoginResponse {
-                access_token: tokens.access_token,
-                refresh_token: tokens.refresh_token,
-                expires: tokens.expires_at.saturating_mul(1000),
-                username: user.username.clone(),
-                nickname: user.username,
-                avatar: "".to_string(),
-                roles: user.roles,
-                permissions: user.permissions,
-            };
-            (StatusCode::OK, Json(ApiResponse::success(response))).into_response()
-        }
-        Err(AuthError::InvalidCredentials) => auth_error(StatusCode::UNAUTHORIZED),
-        Err(err) => internal_error(err),
-    }
-}
-
-async fn refresh_token(
-    State(state): State<AppState>,
-    Json(req): Json<RefreshTokenRequest>,
-) -> Response {
-    match state.auth.refresh(&req.refresh_token) {
-        Ok(tokens) => {
-            let response = RefreshTokenResponse {
-                access_token: tokens.access_token,
-                refresh_token: tokens.refresh_token,
-                expires: tokens.expires_at.saturating_mul(1000),
-            };
-            (StatusCode::OK, Json(ApiResponse::success(response))).into_response()
-        }
-        Err(AuthError::TokenInvalid | AuthError::TokenExpired) => {
-            auth_error(StatusCode::UNAUTHORIZED)
-        }
-        Err(err) => internal_error(err),
-    }
-}
-
-async fn get_async_routes(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Response {
-    // 校验 access token
-    let token = match bearer_token(&headers) {
-        Some(token) => token,
-        None => return auth_error(StatusCode::UNAUTHORIZED),
-    };
-
-    if let Err(AuthError::TokenInvalid | AuthError::TokenExpired) =
-        state.auth.verify_access_token(token)
-    {
-        return auth_error(StatusCode::UNAUTHORIZED);
-    }
-
-    // 最小动态路由响应（可按前端需要扩展）
-    let routes = vec![AsyncRoute {
-        path: "/ems".to_string(),
-        name: "EMS".to_string(),
-        component: "Layout".to_string(),
-        meta: RouteMeta {
-            title: "EMS".to_string(),
-            icon: "monitor".to_string(),
-            rank: 1,
-            roles: None,
-            auths: None,
-        },
-        children: Vec::new(),
-    }];
-
-    (StatusCode::OK, Json(ApiResponse::success(routes))).into_response()
-}
-
-async fn request_context(mut req: Request<Body>, next: Next) -> Response {
-    // 生成 request_id 与 trace_id，并注入请求扩展与日志
-    let ids = new_request_ids();
-    let method = req.method().clone();
-    let path = req.uri().path().to_string();
-    req.extensions_mut().insert(ids.clone());
-
-    let span = tracing::info_span!(
-        "request",
-        request_id = %ids.request_id,
-        trace_id = %ids.trace_id,
-        method = %method,
-        path = %path
-    );
-
-    let mut response = next.run(req).instrument(span).await;
-    response.headers_mut().insert(
-        "x-request-id",
-        HeaderValue::from_str(&ids.request_id).unwrap_or_else(|_| HeaderValue::from_static("")),
-    );
-    response.headers_mut().insert(
-        "x-trace-id",
-        HeaderValue::from_str(&ids.trace_id).unwrap_or_else(|_| HeaderValue::from_static("")),
-    );
-    response
-}
-
-fn bearer_token(headers: &HeaderMap) -> Option<&str> {
-    let header_value = headers.get(header::AUTHORIZATION)?;
-    let auth_str = header_value.to_str().ok()?;
-    auth_str.strip_prefix("Bearer ")
-}
-
-fn auth_error(status: StatusCode) -> Response {
-    (
-        status,
-        Json(ApiResponse::<()>::error(
-            "AUTH.UNAUTHORIZED",
-            "unauthorized",
-        )),
-    )
-        .into_response()
-}
-
-fn internal_error(err: AuthError) -> Response {
-    let message = err.to_string();
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ApiResponse::<()>::error("INTERNAL.ERROR", message)),
-    )
-        .into_response()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::bearer_token;
-    use axum::http::{header, HeaderMap, HeaderValue};
-
-    #[test]
-    fn bearer_token_extracts() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::AUTHORIZATION,
-            HeaderValue::from_static("Bearer token-1"),
-        );
-        assert_eq!(bearer_token(&headers), Some("token-1"));
-    }
 }

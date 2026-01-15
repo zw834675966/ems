@@ -45,6 +45,7 @@
 - 本地 WSL2：一键启动依赖 + ems-api  
 - seed 后可：  
   - 登录获得 token  
+  - 动态路由菜单可见（EMS 模块显示）  
   - 创建项目资源  
   - 用 MQTT 模拟写入点位  
   - 查询 realtime 与历史  

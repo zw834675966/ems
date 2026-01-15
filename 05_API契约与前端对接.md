@@ -25,10 +25,11 @@
 
 ### 2.3 动态路由
 - GET /get-async-routes
-- resp：[{ path,name,component,meta:{title,icon,rank,roles?,auths?},children:[] }]
+ - resp：[{ path,name,component,meta:{title,icon,rank,roles?,auths?},children? }]
 
 > roles：页面级访问  
 > auths：按钮级权限（与 permissions 对应）  
+> 叶子节点建议省略 `children` 字段（避免前端菜单过滤 `children.length === 0`）。
 
 ## 3. EMS 业务接口（项目内）
 - /projects

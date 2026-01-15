@@ -96,6 +96,7 @@ MQTT (Mosquitto):
 - 说明: 当前登录使用 Postgres 用户表（需先执行 migrations/seed）
 - 接口路径兼容 `/login` 与 `/api/login`（同理适用于 refresh-token/get-async-routes）
 - `expires` 为 Unix 毫秒时间戳
+- 动态路由叶子节点省略 `children` 字段，避免前端菜单过滤
 
 ### 认证接口验证
 1) 登录获取 access/refresh token:
@@ -109,6 +110,11 @@ MQTT (Mosquitto):
 3) 获取动态路由（需 Bearer access token）:
    - curl -sS http://localhost:8080/get-async-routes \\
      -H "Authorization: Bearer <accessToken>"
+
+## 前端联动（开发）
+- 前后端一起启动：`EMS_WEB_ADMIN=on cargo run`
+- 仅后端：`cargo run` 或 `cargo run -p ems-api`
+- 前端 mock 关闭：`web/admin/.env.development` 中设置 `VITE_ENABLE_MOCK = false`
 
 ## 备注
 - Codex MCP 列表: `codex mcp list`
