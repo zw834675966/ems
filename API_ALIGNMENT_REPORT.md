@@ -36,6 +36,8 @@
 - 更新模拟认证响应以返回 Unix 毫秒时间戳：
   - `web/admin/mock/login.ts`
   - `web/admin/mock/refreshToken.ts`
+- 更新后端动态路由 meta.auths，按读/写权限码绑定 EMS 菜单：
+  - `apps/ems-api/src/handlers/auth.rs`
 
 ## 剩余风险 / 检查项
 - 动态路由缓存：如果启用了 `CachingAsyncRoutes`，localStorage 中 `async-routes` 的旧路由可能隐藏新菜单。
@@ -64,3 +66,5 @@
   - `admin` 无 `meta.roles` 不匹配。
 - UI 渲染验证（Playwright + 系统 Chrome）：
   - 后端省略空 `children` 数组后，动态菜单渲染（EMS 菜单可见）。
+- UI M1 联调验证（Playwright + 系统 Chrome）：
+  - 项目/网关/设备/点位/点位映射页面完成列表与新增操作。

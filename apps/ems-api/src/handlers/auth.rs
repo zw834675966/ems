@@ -103,7 +103,14 @@ pub async fn get_async_routes(State(state): State<AppState>, headers: HeaderMap)
                 path: "/ems/projects".to_string(),
                 name: "EmsProjects".to_string(),
                 component: "ems/projects/index".to_string(),
-                meta: meta("项目", 1, Some(vec![permissions::PROJECT_READ.to_string()])),
+                meta: meta(
+                    "项目",
+                    1,
+                    Some(vec![
+                        permissions::PROJECT_READ.to_string(),
+                        permissions::PROJECT_WRITE.to_string(),
+                    ]),
+                ),
                 children: Vec::new(),
             },
             AsyncRoute {
@@ -113,7 +120,10 @@ pub async fn get_async_routes(State(state): State<AppState>, headers: HeaderMap)
                 meta: meta(
                     "网关",
                     2,
-                    Some(vec![permissions::ASSET_GATEWAY_READ.to_string()]),
+                    Some(vec![
+                        permissions::ASSET_GATEWAY_READ.to_string(),
+                        permissions::ASSET_GATEWAY_WRITE.to_string(),
+                    ]),
                 ),
                 children: Vec::new(),
             },
@@ -124,7 +134,10 @@ pub async fn get_async_routes(State(state): State<AppState>, headers: HeaderMap)
                 meta: meta(
                     "设备",
                     3,
-                    Some(vec![permissions::ASSET_DEVICE_READ.to_string()]),
+                    Some(vec![
+                        permissions::ASSET_DEVICE_READ.to_string(),
+                        permissions::ASSET_DEVICE_WRITE.to_string(),
+                    ]),
                 ),
                 children: Vec::new(),
             },
@@ -135,7 +148,10 @@ pub async fn get_async_routes(State(state): State<AppState>, headers: HeaderMap)
                 meta: meta(
                     "点位",
                     4,
-                    Some(vec![permissions::ASSET_POINT_READ.to_string()]),
+                    Some(vec![
+                        permissions::ASSET_POINT_READ.to_string(),
+                        permissions::ASSET_POINT_WRITE.to_string(),
+                    ]),
                 ),
                 children: Vec::new(),
             },
@@ -146,7 +162,10 @@ pub async fn get_async_routes(State(state): State<AppState>, headers: HeaderMap)
                 meta: meta(
                     "点位映射",
                     5,
-                    Some(vec![permissions::ASSET_POINT_READ.to_string()]),
+                    Some(vec![
+                        permissions::ASSET_POINT_READ.to_string(),
+                        permissions::ASSET_POINT_WRITE.to_string(),
+                    ]),
                 ),
                 children: Vec::new(),
             },
