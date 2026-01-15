@@ -1,5 +1,5 @@
-use ems_storage::{InMemoryUserStore, UserStore};
 use domain::TenantContext;
+use ems_storage::{InMemoryUserStore, UserStore};
 
 #[tokio::test]
 async fn find_default_admin() {

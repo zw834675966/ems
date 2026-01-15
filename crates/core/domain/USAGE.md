@@ -10,20 +10,41 @@
 
 ## 对外能力
 - `TenantContext`：租户与权限上下文。
+- `permissions`：角色与权限码常量。
 
 ## 最小示例
 ```rust
-use domain::TenantContext;
+use domain::{permissions, TenantContext};
 
 let ctx = TenantContext::new(
     "tenant-1",
     "user-1",
-    vec!["admin".to_string()],
-    vec![],
+    vec![permissions::ROLE_ADMIN.to_string()],
+    vec![permissions::PROJECT_READ.to_string()],
     None,
 );
+```
+
+权限码（稳定版）：
+```
+PROJECT.READ
+PROJECT.WRITE
+ASSET.GATEWAY.READ
+ASSET.GATEWAY.WRITE
+ASSET.DEVICE.READ
+ASSET.DEVICE.WRITE
+ASSET.POINT.READ
+ASSET.POINT.WRITE
+DATA.REALTIME.READ
+DATA.MEASUREMENTS.READ
+CONTROL.COMMAND.ISSUE
+CONTROL.COMMAND.READ
+ALARM.RULE.READ
+ALARM.RULE.WRITE
+ALARM.EVENT.READ
 ```
 
 ## TenantContext 要求
 - 必须由上游（如鉴权层）显式传入。
 - 禁止在业务模块内自行构造租户 ID。
+- project_id 归属校验通过后可写入 project_scope。

@@ -1,6 +1,6 @@
 //! 追踪与请求 ID 生成。
 
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 /// 请求级追踪标识。
 #[derive(Debug, Clone)]

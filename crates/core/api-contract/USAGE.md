@@ -11,6 +11,8 @@
 ## 对外能力
 - `ApiResponse<T>`：统一响应封装。
 - 登录/刷新/动态路由相关 DTO。
+- `LoginResponse.permissions`：按钮权限码（参考 `05_API契约与前端对接.md`）。
+- 项目/网关/设备/点位/点位映射 DTO。
 
 ## JSON 命名约定
 - 请求/响应字段使用 camelCase。

@@ -11,6 +11,7 @@
 ## 对外能力
 - `AuthService`：登录、校验、刷新。
 - `JwtManager`：JWT 生成与解析。
+- 角色与权限码使用 `domain::permissions` 的稳定清单。
 
 ## 最小示例
 ```rust

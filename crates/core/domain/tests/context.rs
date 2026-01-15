@@ -1,12 +1,12 @@
-use domain::TenantContext;
+use domain::{TenantContext, permissions};
 
 #[test]
 fn tenant_context_builds() {
     let ctx = TenantContext::new(
         "tenant-1",
         "user-1",
-        vec!["admin".to_string()],
-        vec!["PROJECT.READ".to_string()],
+        vec![permissions::ROLE_ADMIN.to_string()],
+        vec![permissions::PROJECT_READ.to_string()],
         None,
     );
 
