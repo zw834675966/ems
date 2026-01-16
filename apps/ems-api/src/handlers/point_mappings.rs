@@ -13,7 +13,7 @@
 //! - 创建点映射时需验证点属于该项目
 
 use crate::AppState;
-use crate::middleware::require_project_scope;
+use crate::middleware::{require_permission, require_project_scope};
 use crate::utils::response::{bad_request_error, not_found_error, storage_error};
 use crate::utils::{normalize_optional, normalize_required, point_mapping_to_dto};
 use api_contract::{
@@ -25,6 +25,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
+use domain::permissions;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -48,6 +49,9 @@ pub async fn list_point_mappings(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_READ) {
+        return response;
+    }
     match state
         .point_mapping_store
         .list_point_mappings(&ctx, &path.project_id)
@@ -72,6 +76,9 @@ pub async fn create_point_mapping(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_WRITE) {
+        return response;
+    }
     let point_id = match normalize_required(req.point_id, "pointId") {
         Ok(value) => value,
         Err(response) => return response,
@@ -102,6 +109,7 @@ pub async fn create_point_mapping(
         address,
         scale: req.scale,
         offset: req.offset,
+        protocol_detail: req.protocol_detail,
     };
     match state
         .point_mapping_store
@@ -127,6 +135,9 @@ pub async fn get_point_mapping(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_READ) {
+        return response;
+    }
     match state
         .point_mapping_store
         .find_point_mapping(&ctx, &path.project_id, &path.source_id)
@@ -153,6 +164,9 @@ pub async fn update_point_mapping(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_WRITE) {
+        return response;
+    }
     let source_type = match normalize_optional(req.source_type, "sourceType") {
         Ok(value) => value,
         Err(response) => return response,
@@ -161,16 +175,19 @@ pub async fn update_point_mapping(
         Ok(value) => value,
         Err(response) => return response,
     };
+    let protocol_detail = req.protocol_detail;
     let update = ems_storage::PointMappingUpdate {
         source_type,
         address,
         scale: req.scale,
         offset: req.offset,
+        protocol_detail: protocol_detail.clone(),
     };
     if update.source_type.is_none()
         && update.address.is_none()
         && update.scale.is_none()
         && update.offset.is_none()
+        && protocol_detail.is_none()
     {
         return bad_request_error("empty update");
     }
@@ -199,6 +216,9 @@ pub async fn delete_point_mapping(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_WRITE) {
+        return response;
+    }
     match state
         .point_mapping_store
         .delete_point_mapping(&ctx, &path.project_id, &path.source_id)

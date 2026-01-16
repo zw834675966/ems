@@ -1,0 +1,12 @@
+[package]
+name = "ems-normalize"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92.0"
+publish = false
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+domain = { workspace = true }
+ems-storage = { workspace = true }

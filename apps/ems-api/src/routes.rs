@@ -9,6 +9,8 @@
 //! - 设备管理：/projects/{id}/devices/*
 //! - 点管理：/projects/{id}/points/*
 //! - 点映射管理：/projects/{id}/point-mappings/*
+//! - 控制命令：/projects/{id}/commands/*
+//! - 审计日志：/projects/{id}/audit
 
 use super::AppState;
 use super::handlers::*;
@@ -23,9 +25,31 @@ use axum::{
 pub fn create_api_router() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
+        .route("/livez", get(livez))
+        .route("/readyz", get(readyz))
+        .route("/metrics", get(get_metrics))
         .route("/login", post(login))
         .route("/refresh-token", post(refresh_token))
         .route("/get-async-routes", get(get_async_routes))
+        .route("/rbac/users", get(list_rbac_users).post(create_rbac_user))
+        .route(
+            "/rbac/users/:user_id",
+            axum::routing::put(update_rbac_user),
+        )
+        .route(
+            "/rbac/users/:user_id/roles",
+            axum::routing::put(set_rbac_user_roles),
+        )
+        .route("/rbac/roles", get(list_rbac_roles).post(create_rbac_role))
+        .route(
+            "/rbac/roles/:role_code",
+            axum::routing::delete(delete_rbac_role),
+        )
+        .route(
+            "/rbac/roles/:role_code/permissions",
+            axum::routing::put(set_rbac_role_permissions),
+        )
+        .route("/rbac/permissions", get(list_rbac_permissions))
         .route("/projects", get(list_projects).post(create_project))
         .route(
             "/projects/:project_id",
@@ -51,6 +75,17 @@ pub fn create_api_router() -> Router<AppState> {
             "/projects/:project_id/points",
             get(list_points).post(create_point),
         )
+        .route("/projects/:project_id/realtime", get(get_realtime))
+        .route("/projects/:project_id/measurements", get(list_measurements))
+        .route(
+            "/projects/:project_id/commands",
+            get(list_commands).post(create_command),
+        )
+        .route(
+            "/projects/:project_id/commands/:command_id/receipts",
+            get(list_command_receipts),
+        )
+        .route("/projects/:project_id/audit", get(list_audit_logs))
         .route(
             "/projects/:project_id/points/:point_id",
             get(get_point).put(update_point).delete(delete_point),

@@ -24,12 +24,33 @@
 - `DeviceStore`：设备 CRUD 接口。
 - `PointStore`：点位 CRUD 接口。
 - `PointMappingStore`：点位映射 CRUD 接口。
+- `MeasurementStore`：时序写入接口。
+- `RealtimeStore`：实时 last_value 接口。
+- `CommandStore`：控制命令存储接口。
+- `CommandReceiptStore`：命令回执存储接口。
+- `AuditLogStore`：审计日志存储接口。
 - `InMemoryUserStore`：本地演示实现。
 - `InMemoryProjectStore`：本地测试实现。
 - `InMemoryGatewayStore`：本地测试实现。
 - `InMemoryDeviceStore`：本地测试实现。
 - `InMemoryPointStore`：本地测试实现。
 - `InMemoryPointMappingStore`：本地测试实现。
+- `InMemoryMeasurementStore`：时序写入占位实现。
+- `InMemoryRealtimeStore`：实时 last_value 占位实现。
+- `InMemoryCommandStore`：控制命令占位实现。
+- `InMemoryCommandReceiptStore`：命令回执占位实现。
+- `InMemoryAuditLogStore`：审计日志占位实现。
+- `PgMeasurementStore`：Timescale/PG 时序写入实现。
+- `RedisRealtimeStore`：Redis 实时 last_value 实现。
+- `PgCommandStore`：控制命令 PG 实现。
+- `PgCommandReceiptStore`：命令回执 PG 实现。
+- `PgAuditLogStore`：审计日志 PG 实现。
+
+## Redis 约定
+- key 格式：`tenant:{tid}:project:{pid}:point:{point_id}:last_value`
+- payload：`{ ts_ms, value, quality }`
+- TTL：可通过 `EMS_REDIS_LAST_VALUE_TTL_SECONDS` 配置（未设置或为 0 则不设置 TTL）。
+- online TTL：可通过 `EMS_REDIS_ONLINE_TTL_SECONDS` 配置（默认 60 秒）。
 - `PgUserStore`：Postgres 实现。
 - `PgProjectStore`：Postgres 实现。
 - `PgGatewayStore`：Postgres 实现。

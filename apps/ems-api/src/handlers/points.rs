@@ -13,7 +13,7 @@
 //! - 创建点时需验证设备属于该项目
 
 use crate::AppState;
-use crate::middleware::require_project_scope;
+use crate::middleware::{require_permission, require_project_scope};
 use crate::utils::response::{bad_request_error, not_found_error, storage_error};
 use crate::utils::{normalize_optional, normalize_required, point_to_dto};
 use api_contract::{ApiResponse, CreatePointRequest, PointDto, UpdatePointRequest};
@@ -23,6 +23,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
+use domain::permissions;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -46,6 +47,9 @@ pub async fn list_points(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_READ) {
+        return response;
+    }
     match state.point_store.list_points(&ctx, &path.project_id).await {
         Ok(items) => {
             let data: Vec<PointDto> = items.into_iter().map(point_to_dto).collect();
@@ -66,6 +70,9 @@ pub async fn create_point(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_WRITE) {
+        return response;
+    }
     let device_id = match normalize_required(req.device_id, "deviceId") {
         Ok(value) => value,
         Err(response) => return response,
@@ -116,6 +123,9 @@ pub async fn get_point(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_READ) {
+        return response;
+    }
     match state
         .point_store
         .find_point(&ctx, &path.project_id, &path.point_id)
@@ -142,6 +152,9 @@ pub async fn update_point(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_WRITE) {
+        return response;
+    }
     let key = match normalize_optional(req.key, "key") {
         Ok(value) => value,
         Err(response) => return response,
@@ -187,6 +200,9 @@ pub async fn delete_point(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_POINT_WRITE) {
+        return response;
+    }
     match state
         .point_store
         .delete_point(&ctx, &path.project_id, &path.point_id)

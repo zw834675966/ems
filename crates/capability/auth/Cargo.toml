@@ -7,8 +7,15 @@ publish = false
 
 [dependencies]
 async-trait = { workspace = true }
+argon2 = { workspace = true }
 jsonwebtoken = { workspace = true }
+rand_core = { workspace = true }
 serde = { workspace = true }
+subtle = { workspace = true }
 thiserror = { workspace = true }
 domain = { workspace = true }
 ems-storage = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

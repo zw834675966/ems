@@ -1,0 +1,100 @@
+services:
+  postgres:
+    image: timescale/timescaledb:2.16.1-pg16
+    container_name: ems-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ems
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: ems
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7.2
+    container_name: ems-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "admin123"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./.data/redis:/data
+
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: ems-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./docker/mosquitto/passwords:/mosquitto/config/passwords:ro
+      - ./.data/mosquitto:/mosquitto/data
+
+  # Full stack (opt-in): `docker compose --profile app up -d`
+  db-init:
+    profiles: ["app"]
+    image: postgres:16
+    container_name: ems-db-init
+    depends_on:
+      postgres:
+        condition: service_started
+    working_dir: /app
+    volumes:
+      - ./:/app:ro
+    environment:
+      EMS_DATABASE_URL: postgresql://ems:admin123@postgres:5432/ems
+      EMS_REQUIRE_TIMESCALE: "on"
+    command:
+      [
+        "bash",
+        "-lc",
+        "until pg_isready -d \"$EMS_DATABASE_URL\" >/dev/null 2>&1; do sleep 0.5; done; scripts/db-init.sh"
+      ]
+    restart: "no"
+
+  ems-api:
+    profiles: ["app"]
+    container_name: ems-api
+    build:
+      context: .
+      dockerfile: apps/ems-api/Dockerfile
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      mqtt:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      EMS_HTTP_ADDR: 0.0.0.0:8080
+      EMS_DATABASE_URL: postgresql://ems:admin123@postgres:5432/ems
+      EMS_REDIS_URL: redis://default:admin123@redis:6379
+      EMS_MQTT_HOST: mqtt
+      EMS_MQTT_PORT: "1883"
+      EMS_MQTT_USERNAME: ems
+      EMS_MQTT_PASSWORD: admin123
+      EMS_MQTT_TOPIC_PREFIX: ems
+      EMS_JWT_SECRET: dev
+      EMS_JWT_ACCESS_TTL_SECONDS: "3600"
+      EMS_JWT_REFRESH_TTL_SECONDS: "7200"
+      EMS_INGEST: "on"
+      EMS_CONTROL: "on"
+      EMS_REQUIRE_TIMESCALE: "on"
+      RUST_LOG: info
+
+  web-admin:
+    profiles: ["app"]
+    container_name: ems-web-admin
+    build:
+      context: ./web/admin
+      dockerfile: Dockerfile
+    depends_on:
+      ems-api:
+        condition: service_started
+    ports:
+      - "8848:80"

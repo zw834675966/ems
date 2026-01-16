@@ -25,6 +25,8 @@ async fn gateway_in_memory_crud() {
         project_id: "project-1".to_string(),
         name: "Gateway 1".to_string(),
         status: "offline".to_string(),
+        protocol_type: "mqtt".to_string(),
+        protocol_config: None,
     };
     let created = store.create_gateway(&ctx, record).await.expect("create");
     assert_eq!(created.gateway_id, "gw-1");
@@ -50,6 +52,8 @@ async fn device_in_memory_crud() {
         gateway_id: "gw-1".to_string(),
         name: "Device 1".to_string(),
         model: Some("m1".to_string()),
+        room_id: None,
+        address_config: None,
     };
     let created = store.create_device(&ctx, record).await.expect("create");
     assert_eq!(created.device_id, "dev-1");
@@ -103,6 +107,7 @@ async fn point_mapping_in_memory_crud() {
         address: "topic/1".to_string(),
         scale: Some(1.0),
         offset: Some(0.0),
+        protocol_detail: None,
     };
     let created = store
         .create_point_mapping(&ctx, record)

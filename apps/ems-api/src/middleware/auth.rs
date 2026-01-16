@@ -27,6 +27,29 @@ use crate::AppState;
 use crate::utils::response::{auth_error, forbidden_error, storage_error};
 use domain::TenantContext;
 
+pub fn has_permission(ctx: &TenantContext, permission: &str) -> bool {
+    ctx.permissions.iter().any(|item| item == permission)
+}
+
+pub fn require_permission(ctx: &TenantContext, permission: &str) -> Result<(), Response> {
+    if has_permission(ctx, permission) {
+        Ok(())
+    } else {
+        Err(forbidden_error())
+    }
+}
+
+pub fn require_any_permission(ctx: &TenantContext, permissions: &[&str]) -> Result<(), Response> {
+    if permissions.is_empty() {
+        return Ok(());
+    }
+    if permissions.iter().any(|permission| has_permission(ctx, permission)) {
+        Ok(())
+    } else {
+        Err(forbidden_error())
+    }
+}
+
 /// 请求上下文中间件：注入 request_id/trace_id
 pub async fn request_context(mut req: Request<Body>, next: Next) -> Response {
     let ids = new_request_ids();

@@ -1,0 +1,14 @@
+[package]
+name = "ems-ingest"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92.0"
+publish = false
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+domain = { workspace = true }
+rumqttc = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

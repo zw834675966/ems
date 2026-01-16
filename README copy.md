@@ -11,5 +11,8 @@
 8. 07_项目执行任务.md
 9. 08_最小可运行骨架.md
 10. 09_完成进度.md
-
+11. 10_里程碑完成总结_M0-M5.md
+12. PROJECT_FLOW_DIAGRAMS.md
+13. OPERATION_MANUAL.md
+14. ACCEPTANCE_REPORT.md
 

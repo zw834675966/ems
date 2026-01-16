@@ -1,6 +1,7 @@
 //! 认证能力：登录、JWT 生成与校验。
 
 mod jwt;
+mod password;
 
 use async_trait::async_trait;
 use domain::TenantContext;
@@ -8,6 +9,7 @@ use ems_storage::{UserRecord, UserStore};
 use std::sync::Arc;
 
 pub use jwt::JwtManager;
+pub use password::{PasswordCheck, hash_password, verify_password_and_maybe_upgrade};
 
 /// 认证相关错误。
 #[derive(Debug, thiserror::Error)]
@@ -26,6 +28,7 @@ pub enum AuthError {
 pub struct AuthTokens {
     pub access_token: String,
     pub refresh_token: String,
+    pub refresh_jti: String,
     pub expires_at: u64,
 }
 
@@ -54,11 +57,31 @@ impl AuthService {
             .await
             .map_err(|err| AuthError::Internal(err.to_string()))?
             .ok_or(AuthError::InvalidCredentials)?;
-        if user.password != password {
+        let check = verify_password_and_maybe_upgrade(&user.password, password)?;
+        if !check.verified {
             return Err(AuthError::InvalidCredentials);
+        }
+        if let Some(password_hash) = check.upgrade_hash {
+            let ctx = user.to_tenant_context();
+            let updated = self
+                .user_store
+                .update_password_hash(&ctx, &user.user_id, &password_hash)
+                .await
+                .map_err(|err| AuthError::Internal(err.to_string()))?;
+            if !updated {
+                return Err(AuthError::Internal("password migration update failed".to_string()));
+            }
         }
         let ctx = user.to_tenant_context();
         let tokens = self.jwt.issue_tokens(&ctx)?;
+        let updated = self
+            .user_store
+            .set_refresh_jti(&ctx, &user.user_id, Some(&tokens.refresh_jti))
+            .await
+            .map_err(|err| AuthError::Internal(err.to_string()))?;
+        if !updated {
+            return Err(AuthError::Internal("refresh token binding update failed".to_string()));
+        }
         Ok((user, tokens))
     }
 
@@ -68,9 +91,27 @@ impl AuthService {
     }
 
     /// 使用 refresh token 换取新 token。
-    pub fn refresh(&self, token: &str) -> Result<AuthTokens, AuthError> {
-        let ctx = self.jwt.decode_refresh(token)?;
-        self.jwt.issue_tokens(&ctx)
+    pub async fn refresh(&self, token: &str) -> Result<AuthTokens, AuthError> {
+        let (ctx, jti) = self.jwt.decode_refresh_with_jti(token)?;
+        let stored = self
+            .user_store
+            .get_refresh_jti(&ctx, &ctx.user_id)
+            .await
+            .map_err(|err| AuthError::Internal(err.to_string()))?;
+        if stored.as_deref() != Some(jti.as_str()) {
+            return Err(AuthError::TokenInvalid);
+        }
+
+        let tokens = self.jwt.issue_tokens(&ctx)?;
+        let updated = self
+            .user_store
+            .set_refresh_jti(&ctx, &ctx.user_id, Some(&tokens.refresh_jti))
+            .await
+            .map_err(|err| AuthError::Internal(err.to_string()))?;
+        if !updated {
+            return Err(AuthError::Internal("refresh token rotation update failed".to_string()));
+        }
+        Ok(tokens)
     }
 }
 
@@ -83,7 +124,7 @@ pub trait Authenticator: Send + Sync {
         password: &str,
     ) -> Result<(UserRecord, AuthTokens), AuthError>;
     fn verify_access_token(&self, token: &str) -> Result<TenantContext, AuthError>;
-    fn refresh(&self, token: &str) -> Result<AuthTokens, AuthError>;
+    async fn refresh(&self, token: &str) -> Result<AuthTokens, AuthError>;
 }
 
 #[async_trait]
@@ -100,7 +141,7 @@ impl Authenticator for AuthService {
         self.verify_access_token(token)
     }
 
-    fn refresh(&self, token: &str) -> Result<AuthTokens, AuthError> {
-        self.refresh(token)
+    async fn refresh(&self, token: &str) -> Result<AuthTokens, AuthError> {
+        self.refresh(token).await
     }
 }

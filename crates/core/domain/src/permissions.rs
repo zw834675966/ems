@@ -17,7 +17,14 @@ pub const ALARM_RULE_READ: &str = "ALARM.RULE.READ";
 pub const ALARM_RULE_WRITE: &str = "ALARM.RULE.WRITE";
 pub const ALARM_EVENT_READ: &str = "ALARM.EVENT.READ";
 
-pub const PERMISSION_CODES: [&str; 15] = [
+pub const RBAC_USER_READ: &str = "RBAC.USER.READ";
+pub const RBAC_USER_WRITE: &str = "RBAC.USER.WRITE";
+pub const RBAC_ROLE_READ: &str = "RBAC.ROLE.READ";
+pub const RBAC_ROLE_WRITE: &str = "RBAC.ROLE.WRITE";
+
+pub const SYSTEM_METRICS_READ: &str = "SYSTEM.METRICS.READ";
+
+pub const PERMISSION_CODES: [&str; 20] = [
     PROJECT_READ,
     PROJECT_WRITE,
     ASSET_GATEWAY_READ,
@@ -33,4 +40,9 @@ pub const PERMISSION_CODES: [&str; 15] = [
     ALARM_RULE_READ,
     ALARM_RULE_WRITE,
     ALARM_EVENT_READ,
+    RBAC_USER_READ,
+    RBAC_USER_WRITE,
+    RBAC_ROLE_READ,
+    RBAC_ROLE_WRITE,
+    SYSTEM_METRICS_READ,
 ];

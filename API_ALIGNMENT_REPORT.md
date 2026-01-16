@@ -38,6 +38,9 @@
   - `web/admin/mock/refreshToken.ts`
 - 更新后端动态路由 meta.auths，按读/写权限码绑定 EMS 菜单：
   - `apps/ems-api/src/handlers/auth.rs`
+- 修正实时查询返回类型对齐：`GET /projects/{projectId}/realtime?pointId=` 返回列表（指定 pointId 时长度为 0 或 1）：
+  - `web/admin/src/api/ems/realtime.ts`
+  - `web/admin/src/views/ems/realtime/index.vue`
 
 ## 剩余风险 / 检查项
 - 动态路由缓存：如果启用了 `CachingAsyncRoutes`，localStorage 中 `async-routes` 的旧路由可能隐藏新菜单。

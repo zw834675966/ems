@@ -8,16 +8,26 @@ publish = false
 [dependencies]
 api-contract = { workspace = true }
 axum = { workspace = true }
+async-trait = { workspace = true }
 dotenvy = { workspace = true }
 ems-auth = { workspace = true }
 ems-config = { workspace = true }
+ems-ingest = { workspace = true }
+ems-normalize = { workspace = true }
+ems-control = { workspace = true }
+ems-pipeline = { workspace = true }
 ems-storage = { workspace = true }
 ems-telemetry = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sqlx = { workspace = true }
 tokio = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
 domain = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+bytes = "1"
+http-body-util = "0.1"

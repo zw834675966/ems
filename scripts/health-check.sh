@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${EMS_DATABASE_URL:?EMS_DATABASE_URL is required}"
+if [ -z "${EMS_DATABASE_URL:-}" ]; then
+  EMS_DATABASE_URL="postgresql://ems:admin123@localhost:5432/ems"
+  export EMS_DATABASE_URL
+fi
 
 echo "postgres: checking..."
 pg_isready -d "$EMS_DATABASE_URL"

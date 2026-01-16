@@ -4,6 +4,7 @@ use ems_config::AppConfig;
 fn load_config_from_env() {
     // Rust 2024 中 set_var 需要显式标注 unsafe（测试进程内可控）。
     unsafe {
+        std::env::set_var("EMS_DATABASE_URL", "postgresql://ems:admin123@localhost:5432/ems");
         std::env::set_var("EMS_JWT_SECRET", "secret");
         std::env::set_var("EMS_JWT_ACCESS_TTL_SECONDS", "3600");
         std::env::set_var("EMS_JWT_REFRESH_TTL_SECONDS", "7200");

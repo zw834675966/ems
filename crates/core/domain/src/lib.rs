@@ -1,4 +1,7 @@
+pub mod data;
 pub mod permissions;
+
+pub use data::{PointValue, PointValueData, RawEvent};
 
 /// 租户上下文：所有模块共享的执行上下文。
 #[derive(Debug, Clone)]

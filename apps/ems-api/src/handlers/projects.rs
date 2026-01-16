@@ -12,7 +12,7 @@
 //! - 需验证项目归属当前租户
 
 use crate::AppState;
-use crate::middleware::require_tenant_context;
+use crate::middleware::{require_permission, require_tenant_context};
 use crate::utils::response::{bad_request_error, not_found_error, storage_error};
 use crate::utils::{normalize_optional, normalize_required, project_to_dto};
 use api_contract::{ApiResponse, CreateProjectRequest, ProjectDto, UpdateProjectRequest};
@@ -22,6 +22,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
+use domain::permissions;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -35,6 +36,9 @@ pub async fn list_projects(State(state): State<AppState>, headers: HeaderMap) ->
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::PROJECT_READ) {
+        return response;
+    }
     match state.project_store.list_projects(&ctx).await {
         Ok(projects) => {
             let data: Vec<ProjectDto> = projects.into_iter().map(project_to_dto).collect();
@@ -54,6 +58,9 @@ pub async fn create_project(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::PROJECT_WRITE) {
+        return response;
+    }
     let name = match normalize_required(req.name, "name") {
         Ok(value) => value,
         Err(response) => return response,
@@ -85,6 +92,9 @@ pub async fn get_project(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::PROJECT_READ) {
+        return response;
+    }
     match state
         .project_store
         .find_project(&ctx, &path.project_id)
@@ -111,6 +121,9 @@ pub async fn update_project(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::PROJECT_WRITE) {
+        return response;
+    }
     let name = match normalize_optional(req.name, "name") {
         Ok(value) => value,
         Err(response) => return response,
@@ -148,6 +161,9 @@ pub async fn delete_project(
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
+    if let Err(response) = require_permission(&ctx, permissions::PROJECT_WRITE) {
+        return response;
+    }
     match state
         .project_store
         .delete_project(&ctx, &path.project_id)
@@ -169,19 +185,96 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn project_scope_sets_context() {
+    async fn projects_list_requires_permission() {
         let user_store = Arc::new(InMemoryUserStore::with_default_admin());
         let jwt = JwtManager::new("secret".to_string(), 3600, 3600);
-        let auth = Arc::new(AuthService::new(user_store, jwt));
+        let auth = Arc::new(AuthService::new(user_store.clone(), jwt));
         let project_store: Arc<dyn ProjectStore> =
             Arc::new(InMemoryProjectStore::with_default_project());
+        let command_store: Arc<dyn ems_storage::CommandStore> =
+            Arc::new(ems_storage::InMemoryCommandStore::new());
+        let command_receipt_store: Arc<dyn ems_storage::CommandReceiptStore> =
+            Arc::new(ems_storage::InMemoryCommandReceiptStore::new());
+        let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
+            Arc::new(ems_storage::InMemoryAuditLogStore::new());
+        let dispatcher = Arc::new(ems_control::NoopDispatcher::default());
+        let command_service = Arc::new(ems_control::CommandService::new(
+            command_store.clone(),
+            audit_log_store.clone(),
+            dispatcher,
+        ));
         let state = AppState {
             auth,
+            db_pool: None,
+            rbac_store: user_store,
             project_store,
             gateway_store: Arc::new(ems_storage::InMemoryGatewayStore::new()),
             device_store: Arc::new(ems_storage::InMemoryDeviceStore::new()),
             point_store: Arc::new(ems_storage::InMemoryPointStore::new()),
             point_mapping_store: Arc::new(ems_storage::InMemoryPointMappingStore::new()),
+            measurement_store: Arc::new(ems_storage::InMemoryMeasurementStore::new()),
+            realtime_store: Arc::new(ems_storage::InMemoryRealtimeStore::new()),
+            online_store: Arc::new(ems_storage::InMemoryOnlineStore::new()),
+            command_store,
+            command_receipt_store,
+            audit_log_store,
+            command_service,
+        };
+
+        let jwt = JwtManager::new("secret".to_string(), 3600, 3600);
+        let tokens = jwt
+            .issue_tokens(&domain::TenantContext::new(
+                "tenant-1".to_string(),
+                "user-1".to_string(),
+                Vec::new(),
+                Vec::new(),
+                None,
+            ))
+            .expect("token");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", tokens.access_token)).expect("header"),
+        );
+        let response = list_projects(State(state), headers).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn project_scope_sets_context() {
+        let user_store = Arc::new(InMemoryUserStore::with_default_admin());
+        let jwt = JwtManager::new("secret".to_string(), 3600, 3600);
+        let auth = Arc::new(AuthService::new(user_store.clone(), jwt));
+        let project_store: Arc<dyn ProjectStore> =
+            Arc::new(InMemoryProjectStore::with_default_project());
+        let command_store: Arc<dyn ems_storage::CommandStore> =
+            Arc::new(ems_storage::InMemoryCommandStore::new());
+        let command_receipt_store: Arc<dyn ems_storage::CommandReceiptStore> =
+            Arc::new(ems_storage::InMemoryCommandReceiptStore::new());
+        let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
+            Arc::new(ems_storage::InMemoryAuditLogStore::new());
+        let dispatcher = Arc::new(ems_control::NoopDispatcher::default());
+        let command_service = Arc::new(ems_control::CommandService::new(
+            command_store.clone(),
+            audit_log_store.clone(),
+            dispatcher,
+        ));
+        let state = AppState {
+            auth,
+            db_pool: None,
+            rbac_store: user_store,
+            project_store,
+            gateway_store: Arc::new(ems_storage::InMemoryGatewayStore::new()),
+            device_store: Arc::new(ems_storage::InMemoryDeviceStore::new()),
+            point_store: Arc::new(ems_storage::InMemoryPointStore::new()),
+            point_mapping_store: Arc::new(ems_storage::InMemoryPointMappingStore::new()),
+            measurement_store: Arc::new(ems_storage::InMemoryMeasurementStore::new()),
+            realtime_store: Arc::new(ems_storage::InMemoryRealtimeStore::new()),
+            online_store: Arc::new(ems_storage::InMemoryOnlineStore::new()),
+            command_store,
+            command_receipt_store,
+            audit_log_store,
+            command_service,
         };
         let (_, tokens) = state.auth.login("admin", "admin123").await.expect("login");
         let mut headers = HeaderMap::new();
@@ -199,16 +292,37 @@ mod tests {
     async fn project_scope_rejects_mismatch() {
         let user_store = Arc::new(InMemoryUserStore::with_default_admin());
         let jwt = JwtManager::new("secret".to_string(), 3600, 3600);
-        let auth = Arc::new(AuthService::new(user_store, jwt));
+        let auth = Arc::new(AuthService::new(user_store.clone(), jwt));
         let project_store: Arc<dyn ProjectStore> =
             Arc::new(InMemoryProjectStore::with_default_project());
+        let command_store: Arc<dyn ems_storage::CommandStore> =
+            Arc::new(ems_storage::InMemoryCommandStore::new());
+        let command_receipt_store: Arc<dyn ems_storage::CommandReceiptStore> =
+            Arc::new(ems_storage::InMemoryCommandReceiptStore::new());
+        let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
+            Arc::new(ems_storage::InMemoryAuditLogStore::new());
+        let dispatcher = Arc::new(ems_control::NoopDispatcher::default());
+        let command_service = Arc::new(ems_control::CommandService::new(
+            command_store.clone(),
+            audit_log_store.clone(),
+            dispatcher,
+        ));
         let state = AppState {
             auth,
+            db_pool: None,
+            rbac_store: user_store,
             project_store,
             gateway_store: Arc::new(ems_storage::InMemoryGatewayStore::new()),
             device_store: Arc::new(ems_storage::InMemoryDeviceStore::new()),
             point_store: Arc::new(ems_storage::InMemoryPointStore::new()),
             point_mapping_store: Arc::new(ems_storage::InMemoryPointMappingStore::new()),
+            measurement_store: Arc::new(ems_storage::InMemoryMeasurementStore::new()),
+            realtime_store: Arc::new(ems_storage::InMemoryRealtimeStore::new()),
+            online_store: Arc::new(ems_storage::InMemoryOnlineStore::new()),
+            command_store,
+            command_receipt_store,
+            audit_log_store,
+            command_service,
         };
         let (_, tokens) = state.auth.login("admin", "admin123").await.expect("login");
         let mut headers = HeaderMap::new();

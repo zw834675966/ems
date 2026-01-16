@@ -35,9 +35,8 @@ impl PointMappingStore for PgPointMappingStore {
         ctx: &TenantContext,
         project_id: &str,
     ) -> Result<Vec<PointMappingRecord>, StorageError> {
-        ensure_project_scope(ctx, project_id)?;
         let rows = sqlx::query(
-            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value \
+            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail \
              from point_sources where tenant_id = $1 and project_id = $2",
         )
         .bind(&ctx.tenant_id)
@@ -55,6 +54,7 @@ impl PointMappingStore for PgPointMappingStore {
                 address: row.try_get("address")?,
                 scale: row.try_get("scale")?,
                 offset: row.try_get("offset_value")?,
+                protocol_detail: row.try_get("protocol_detail")?,
             });
         }
         Ok(mappings)
@@ -68,7 +68,7 @@ impl PointMappingStore for PgPointMappingStore {
     ) -> Result<Option<PointMappingRecord>, StorageError> {
         ensure_project_scope(ctx, project_id)?;
         let row = sqlx::query(
-            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value \
+            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail \
              from point_sources where tenant_id = $1 and project_id = $2 and source_id = $3",
         )
         .bind(&ctx.tenant_id)
@@ -88,6 +88,7 @@ impl PointMappingStore for PgPointMappingStore {
             address: row.try_get("address")?,
             scale: row.try_get("scale")?,
             offset: row.try_get("offset_value")?,
+            protocol_detail: row.try_get("protocol_detail")?,
         }))
     }
 
@@ -101,8 +102,8 @@ impl PointMappingStore for PgPointMappingStore {
             return Err(StorageError::new("tenant mismatch"));
         }
         sqlx::query(
-            "insert into point_sources (source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value) \
-             values ($1, $2, $3, $4, $5, $6, $7, $8)",
+            "insert into point_sources (source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail) \
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(&record.source_id)
         .bind(&record.tenant_id)
@@ -112,6 +113,7 @@ impl PointMappingStore for PgPointMappingStore {
         .bind(&record.address)
         .bind(&record.scale)
         .bind(&record.offset)
+        .bind(&record.protocol_detail)
         .execute(&self.pool)
         .await?;
         Ok(record)
@@ -130,14 +132,16 @@ impl PointMappingStore for PgPointMappingStore {
              source_type = coalesce($1, source_type), \
              address = coalesce($2, address), \
              scale = coalesce($3, scale), \
-             offset_value = coalesce($4, offset_value) \
-             where tenant_id = $5 and project_id = $6 and source_id = $7 \
-             returning source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value",
+             offset_value = coalesce($4, offset_value), \
+             protocol_detail = coalesce($5, protocol_detail) \
+             where tenant_id = $6 and project_id = $7 and source_id = $8 \
+             returning source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail",
         )
         .bind(update.source_type)
         .bind(update.address)
         .bind(update.scale)
         .bind(update.offset)
+        .bind(update.protocol_detail)
         .bind(&ctx.tenant_id)
         .bind(project_id)
         .bind(source_id)
@@ -155,6 +159,7 @@ impl PointMappingStore for PgPointMappingStore {
             address: row.try_get("address")?,
             scale: row.try_get("scale")?,
             offset: row.try_get("offset_value")?,
+            protocol_detail: row.try_get("protocol_detail")?,
         }))
     }
 

@@ -13,6 +13,7 @@
 - 登录/刷新/动态路由相关 DTO。
 - `LoginResponse.permissions`：按钮权限码（参考 `05_API契约与前端对接.md`）。
 - 项目/网关/设备/点位/点位映射 DTO。
+- 控制命令与审计 DTO（commands/audit/receipts）。
 
 ## JSON 命名约定
 - 请求/响应字段使用 camelCase。
@@ -20,8 +21,8 @@
 
 ## 最小示例
 ```rust
-use api_contract::ApiResponse;
+use api_contract::{ApiResponse, error_codes};
 
 let ok = ApiResponse::success("ok");
-let err = ApiResponse::<()>::error("AUTH.UNAUTHORIZED", "unauthorized");
+let err = ApiResponse::<()>::error(error_codes::AUTH_UNAUTHORIZED, "unauthorized");
 ```

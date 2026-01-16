@@ -1,0 +1,19 @@
+[package]
+name = "ems-control"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92.0"
+publish = false
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+domain = { workspace = true }
+ems-storage = { workspace = true }
+rumqttc = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+ems-telemetry = { workspace = true }

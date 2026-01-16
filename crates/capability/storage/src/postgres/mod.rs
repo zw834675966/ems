@@ -18,6 +18,10 @@
 //! - **DeviceStore** (`device.rs`)：设备存储，支持项目级资源管理
 //! - **PointStore** (`point.rs`)：点位存储，支持项目级资源管理
 //! - **PointMappingStore** (`point_mapping.rs`)：点位映射存储，支持项目级资源管理
+//! - **MeasurementStore** (`measurement.rs`)：时序写入支持
+//! - **CommandStore** (`command.rs`)：控制命令存储
+//! - **CommandReceiptStore** (`command_receipt.rs`)：命令回执存储
+//! - **AuditLogStore** (`audit.rs`)：审计日志存储
 //!
 //! ## 数据库模式要求
 //!
@@ -27,10 +31,15 @@
 //! - `users`：用户表（user_id, tenant_id, username, password_hash）
 //! - `tenants`：租户表（tenant_id, name, status）
 //! - `projects`：项目表（project_id, tenant_id, name, timezone）
-//! - `roles`：角色表（role_code, name）
 //! - `permissions`：权限表（permission_code, description）
-//! - `user_roles`：用户角色关联表（user_id, role_code）
-//! - `role_permissions`：角色权限关联表（role_code, permission_code）
+//!
+//! ### RBAC（tenant 级）
+//! - `tenant_roles`：租户角色表（tenant_id, role_code, name）
+//! - `tenant_user_roles`：租户用户角色关联（tenant_id, user_id, role_code）
+//! - `tenant_role_permissions`：租户角色权限关联（tenant_id, role_code, permission_code）
+//!
+//! （兼容保留）旧版全局 RBAC 表：
+//! - `roles` / `user_roles` / `role_permissions`（不再作为鉴权计算来源）
 //!
 //! ### 资产表
 //! - `gateways`：网关表（gateway_id, tenant_id, project_id, name, status, last_seen_at）
@@ -137,16 +146,24 @@
 //! - **数据归档**：支持历史数据的归档和清理
 
 // 导出各个 PostgreSQL 存储实现
+pub mod audit;
+pub mod command;
+pub mod command_receipt;
 pub mod device;
 pub mod gateway;
+pub mod measurement;
 pub mod point;
 pub mod point_mapping;
 pub mod project;
 pub mod user;
 
 // 导出到 crate 根目录，方便外部引用
+pub use audit::*;
+pub use command::*;
+pub use command_receipt::*;
 pub use device::*;
 pub use gateway::*;
+pub use measurement::*;
 pub use point::*;
 pub use point_mapping::*;
 pub use project::*;

@@ -1,43 +1,205 @@
+# ============================================
+# Workspace 配置
+# ============================================
+#
+# 定义整个 Rust workspace 的成员和依赖管理方式。
+#
+# ## Workspace 结构
+#
+# - `apps/ems-api`: HTTP API 服务器（唯一运行时二进制）
+# - `crates/core/`: 核心领域模型和 API 契约
+#   - `domain`: 领域模型（TenantContext、PointValue 等）
+#   - `api-contract`: DTO、ErrorCode、OpenAPI 规范
+# - `crates/capability/`: 能力模块（各功能领域）
+#   - `auth`: 认证能力（JWT 生成/校验、登录）
+#   - `ingest`: 数据接入能力（MQTT/HTTP 数据接收）
+#   - `normalize`: 数据标准化能力（单位转换、数据清洗）
+#   - `pipeline`: 数据流水线能力（接入 → 标准化 → 存储）
+#   - `storage`: 存储能力（PostgreSQL + Redis）
+#   - `telemetry`: 可观测性能力（日志追踪、请求 ID）
+#   - `config`: 配置加载能力（环境变量读取）
+#
+# ## 依赖管理
+#
+# 使用 `workspace.dependencies` 集中管理所有外部依赖版本。
+# 子 crate 通过 `{ workspace = true }` 继承版本和特性。
+
 [workspace]
 members = [
   "apps/ems-api",
   "crates/core/domain",
   "crates/core/api-contract",
   "crates/capability/auth",
+  "crates/capability/ingest",
+  "crates/capability/normalize",
+  "crates/capability/control",
+  "crates/capability/pipeline",
+  "crates/capability/protocol",
   "crates/capability/storage",
   "crates/capability/telemetry",
   "crates/capability/config",
 ]
+
+# 默认成员：运行 `cargo run` 时默认编译的成员
 default-members = ["apps/ems-api"]
+
+# 解析器版本：使用新版 resolver 以支持 workspace 依赖
 resolver = "2"
 
+# ============================================
+# Workspace 外部依赖（集中管理版本）
+# ============================================
+#
+# 所有外部依赖在此定义版本和特性。
+# 子 crate 通过 `{ workspace = true }` 继承这些配置。
+
 [workspace.dependencies]
+# ============================================
+# 异步与并发
+# ============================================
+
+# async-trait：为 trait 提供异步方法支持
+# 用途：定义存储接口（DeviceStore、UserStore 等）的 async 方法
 async-trait = "0.1"
-axum = "0.7"
-dotenvy = "0.15"
-jsonwebtoken = "9"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls"] }
-thiserror = "1"
+
+# tokio：异步运行时，基于 Future 的异步编程框架
+# 特性说明：
+#   - macros：#[tokio::main]、#[tokio::test] 等宏
+#   - rt-multi-thread：多线程运行时调度器
+#   - process：启动子进程（用于启动前端 pnpm dev）
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process"] }
+
+# ============================================
+# Web 框架
+# ============================================
+
+# axum：基于 Tower 的现代 Web 框架
+# 用途：构建 RESTful API 服务器，路由、提取器、中间件
+axum = "0.7"
+
+# tower：中间件和服务抽象库（axum 的基础）
+# 用途：提供服务组合和中间件抽象
 tower = "0.5"
+
+# tower-http：HTTP 专用中间件和工具
+# 特性说明：
+#   - request-id：注入 x-request-id 响应头
+#   - trace：分布式追踪支持
 tower-http = { version = "0.6", features = ["request-id", "trace"] }
+
+# ============================================
+# 序列化与反序列化
+# ============================================
+
+# serde：通用的序列化/反序列化框架
+# 特性：derive：#[derive(Serialize, Deserialize)] 宏支持
+# 用途：结构体与 JSON/其他格式互转
+serde = { version = "1", features = ["derive"] }
+
+# serde_json：JSON 序列化/反序列化实现
+# 用途：HTTP 请求/响应体、Redis 数据存储
+serde_json = "1"
+
+# ============================================
+# 认证与安全
+# ============================================
+
+# jsonwebtoken：JWT (JSON Web Token) 编码与解码库
+# 用途：生成 access_token/refresh_token，验证 token 签名和过期时间
+jsonwebtoken = "9"
+
+# argon2：口令哈希（推荐 Argon2id）
+# 用途：用户口令强哈希存储与校验
+argon2 = "0.5"
+
+# subtle：常量时间比较（避免时序侧信道）
+subtle = "2.5"
+
+# rand_core：随机源（OsRng 需要 getrandom）
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+# ============================================
+# 数据库与存储
+# ============================================
+
+# sqlx：类型安全的 SQL 工具包，支持编译时 SQL 检查
+# 特性说明：
+#   - postgres：PostgreSQL 驱动
+#   - runtime-tokio-rustls：基于 Tokio + Rustls 的 TLS 连接
+#   - default-features = false：仅启用需要的功能，减小二进制体积
+# 用途：PostgreSQL 连接池管理、类型安全的查询
+sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls"] }
+
+# redis：Redis 客户端库
+# 特性：tokio-comp：Tokio 异步运行时兼容
+# 用途：实时数据缓存（last_value 存储）、SCAN 查询
+redis = { version = "0.25", features = ["tokio-comp"] }
+
+# rumqttc：MQTT 客户端库
+# 用途：MQTT 采集源接入（订阅与消息处理）
+rumqttc = "0.24"
+
+# ============================================
+# 错误处理
+# ============================================
+
+# thiserror：派生错误类型的简化库
+# 用途：统一错误定义，#[derive(Error)] 提供错误上下文
+thiserror = "1"
+
+# ============================================
+# 日志与追踪
+# ============================================
+
+# tracing：结构化日志和追踪框架
+# 用途：记录请求日志、分布式追踪 span
 tracing = "0.1"
+
+# tracing-subscriber：tracing 的订阅器实现
+# 特性说明：
+#   - env-filter：环境变量控制日志级别（RUST_LOG）
+#   - fmt：格式化日志输出
+# 用途：初始化日志系统、配置日志级别
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-uuid = { version = "1", features = ["v4"] }
+
+# ============================================
+# 工具库
+# ============================================
+
+# uuid：UUID 生成与解析
+# 特性：v4：随机 UUID 生成
+# 用途：生成 request_id、trace_id、实体 ID
+uuid = { version = "1", features = ["v4", "v5"] }
+
+# dotenvy：从 .env 文件加载环境变量
+# 用途：开发环境加载配置（数据库 URL、JWT 密钥等）
+dotenvy = "0.15"
+
+# ============================================
+# Workspace 内部依赖（路径依赖）
+# ============================================
 
 api-contract = { path = "crates/core/api-contract" }
 domain = { path = "crates/core/domain" }
 ems-auth = { path = "crates/capability/auth" }
 ems-config = { path = "crates/capability/config" }
+ems-ingest = { path = "crates/capability/ingest" }
+ems-normalize = { path = "crates/capability/normalize" }
+ems-control = { path = "crates/capability/control" }
+ems-pipeline = { path = "crates/capability/pipeline" }
 ems-storage = { path = "crates/capability/storage" }
 ems-telemetry = { path = "crates/capability/telemetry" }
 
-[profile.dev]
-debug = 1
+# ============================================
+# 编译配置
+# ============================================
 
+# 开发配置
+[profile.dev]
+debug = 1  # 包含调试信息（默认级别）
+
+# 发布配置（生产环境）
 [profile.release]
-lto = "thin"
-codegen-units = 1
-strip = "symbols"
+lto = "thin"          # 链接时优化：thin 模式（平衡编译时间和优化效果）
+codegen-units = 1       # 代码生成单元：减少以优化性能（单单元）
+strip = "symbols"       # 移除符号表：减小二进制体积

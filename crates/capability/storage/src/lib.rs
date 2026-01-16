@@ -143,7 +143,9 @@ pub mod connection;
 pub mod error;
 pub mod in_memory;
 pub mod models;
+pub mod online;
 pub mod postgres;
+pub mod redis;
 pub mod traits;
 pub mod validation;
 
@@ -151,16 +153,21 @@ pub mod validation;
 pub use connection::*;
 pub use error::*;
 pub use models::*;
+pub use online::*;
+pub use redis::RedisRealtimeStore;
+pub use redis::RedisOnlineStore;
 pub use traits::*;
 pub use validation::*;
 
 // 导出内存存储实现类型
 pub use in_memory::{
-    InMemoryDeviceStore, InMemoryGatewayStore, InMemoryPointMappingStore, InMemoryPointStore,
-    InMemoryProjectStore, InMemoryUserStore,
+    InMemoryAuditLogStore, InMemoryCommandReceiptStore, InMemoryCommandStore, InMemoryDeviceStore,
+    InMemoryGatewayStore, InMemoryMeasurementStore, InMemoryPointMappingStore, InMemoryPointStore,
+    InMemoryOnlineStore, InMemoryProjectStore, InMemoryRealtimeStore, InMemoryUserStore,
 };
 
 // 导出 PostgreSQL 存储实现类型
 pub use postgres::{
-    PgDeviceStore, PgGatewayStore, PgPointMappingStore, PgPointStore, PgProjectStore, PgUserStore,
+    PgAuditLogStore, PgCommandReceiptStore, PgCommandStore, PgDeviceStore, PgGatewayStore,
+    PgMeasurementStore, PgPointMappingStore, PgPointStore, PgProjectStore, PgUserStore,
 };

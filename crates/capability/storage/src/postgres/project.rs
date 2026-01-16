@@ -140,18 +140,62 @@ impl ProjectStore for PgProjectStore {
         }))
     }
 
-    /// 删除项目
+    /// 删除项目（级联删除所有关联资源）
+    ///
+    /// 删除顺序：
+    /// 1. 点位映射 (point_sources)
+    /// 2. 点位 (points)
+    /// 3. 设备 (devices)
+    /// 4. 网关 (gateways)
+    /// 5. 项目 (projects)
     async fn delete_project(
         &self,
         ctx: &TenantContext,
         project_id: &str,
     ) -> Result<bool, StorageError> {
         ensure_tenant(ctx)?;
-        let result = sqlx::query("delete from projects where tenant_id = $1 and project_id = $2")
+
+        // 使用事务确保级联删除的原子性
+        let mut tx = self.pool.begin().await?;
+
+        // 1. 删除点位映射
+        sqlx::query("DELETE FROM point_sources WHERE tenant_id = $1 AND project_id = $2")
             .bind(&ctx.tenant_id)
             .bind(project_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+
+        // 2. 删除点位
+        sqlx::query("DELETE FROM points WHERE tenant_id = $1 AND project_id = $2")
+            .bind(&ctx.tenant_id)
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // 3. 删除设备
+        sqlx::query("DELETE FROM devices WHERE tenant_id = $1 AND project_id = $2")
+            .bind(&ctx.tenant_id)
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // 4. 删除网关
+        sqlx::query("DELETE FROM gateways WHERE tenant_id = $1 AND project_id = $2")
+            .bind(&ctx.tenant_id)
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // 5. 删除项目本身
+        let result = sqlx::query("DELETE FROM projects WHERE tenant_id = $1 AND project_id = $2")
+            .bind(&ctx.tenant_id)
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // 提交事务
+        tx.commit().await?;
+
         Ok(result.rows_affected() > 0)
     }
 

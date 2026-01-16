@@ -3,6 +3,7 @@ use domain::TenantContext;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 // 区分 access 与 refresh 的 token 类型。
 const ACCESS_TOKEN_TYPE: &str = "access";
@@ -17,6 +18,7 @@ struct Claims {
     permissions: Vec<String>,
     exp: usize,
     token_type: String,
+    jti: Option<String>,
 }
 
 /// JWT 生成与校验。
@@ -38,12 +40,19 @@ impl JwtManager {
 
     /// 基于 TenantContext 签发 access/refresh token。
     pub fn issue_tokens(&self, ctx: &TenantContext) -> Result<AuthTokens, AuthError> {
-        let access_token = self.encode(ctx, self.access_ttl_seconds, ACCESS_TOKEN_TYPE)?;
-        let refresh_token = self.encode(ctx, self.refresh_ttl_seconds, REFRESH_TOKEN_TYPE)?;
+        let access_token = self.encode(ctx, self.access_ttl_seconds, ACCESS_TOKEN_TYPE, None)?;
+        let refresh_jti = Uuid::new_v4().to_string();
+        let refresh_token = self.encode(
+            ctx,
+            self.refresh_ttl_seconds,
+            REFRESH_TOKEN_TYPE,
+            Some(refresh_jti.clone()),
+        )?;
         let expires_at = now_epoch_seconds() + self.access_ttl_seconds;
         Ok(AuthTokens {
             access_token,
             refresh_token,
+            refresh_jti,
             expires_at,
         })
     }
@@ -58,12 +67,29 @@ impl JwtManager {
         self.decode(token, REFRESH_TOKEN_TYPE)
     }
 
+    pub fn decode_refresh_with_jti(&self, token: &str) -> Result<(TenantContext, String), AuthError> {
+        let decoded = self.decode_claims(token)?;
+        if decoded.token_type != REFRESH_TOKEN_TYPE {
+            return Err(AuthError::TokenInvalid);
+        }
+        let ctx = TenantContext::new(
+            decoded.tenant_id,
+            decoded.sub,
+            decoded.roles,
+            decoded.permissions,
+            None,
+        );
+        let jti = decoded.jti.ok_or(AuthError::TokenInvalid)?;
+        Ok((ctx, jti))
+    }
+
     /// 内部编码逻辑。
     fn encode(
         &self,
         ctx: &TenantContext,
         ttl_seconds: u64,
         token_type: &str,
+        jti: Option<String>,
     ) -> Result<String, AuthError> {
         let exp = (now_epoch_seconds() + ttl_seconds) as usize;
         let claims = Claims {
@@ -73,6 +99,7 @@ impl JwtManager {
             permissions: ctx.permissions.clone(),
             exp,
             token_type: token_type.to_string(),
+            jti,
         };
         jsonwebtoken::encode(
             &Header::default(),
@@ -84,6 +111,22 @@ impl JwtManager {
 
     /// 内部解码逻辑，校验 token 类型。
     fn decode(&self, token: &str, expected_type: &str) -> Result<TenantContext, AuthError> {
+        let decoded = self.decode_claims(token)?;
+        if decoded.token_type != expected_type {
+            return Err(AuthError::TokenInvalid);
+        }
+        Ok(TenantContext::new(
+            decoded.tenant_id,
+            decoded.sub,
+            decoded.roles,
+            decoded.permissions,
+            None,
+        ))
+    }
+}
+
+impl JwtManager {
+    fn decode_claims(&self, token: &str) -> Result<Claims, AuthError> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
         let decoded = jsonwebtoken::decode::<Claims>(
@@ -92,16 +135,7 @@ impl JwtManager {
             &validation,
         )
         .map_err(map_jwt_error)?;
-        if decoded.claims.token_type != expected_type {
-            return Err(AuthError::TokenInvalid);
-        }
-        Ok(TenantContext::new(
-            decoded.claims.tenant_id,
-            decoded.claims.sub,
-            decoded.claims.roles,
-            decoded.claims.permissions,
-            None,
-        ))
+        Ok(decoded.claims)
     }
 }
 

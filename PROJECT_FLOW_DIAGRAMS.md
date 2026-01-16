@@ -30,19 +30,23 @@ graph TB
 
     subgraph "能力层 (Capabilities)"
         Auth[Auth Service<br/>JWT 管理]
-        Storage[Storage 层<br/>PostgreSQL]
+        Storage[Storage 层<br/>PG/Timescale/Redis]
         Config[Config<br/>环境变量]
         Telemetry[Telemetry<br/>结构化日志]
+        Ingest[Ingest<br/>MQTT Source]
+        Normalize[Normalize<br/>PointMapping]
+        Pipeline[Pipeline<br/>Dedup/Batch/Retry]
+        Control[Control<br/>CommandService + MQTT Dispatcher/Receipt]
     end
 
     subgraph "数据层"
         PG[(PostgreSQL<br/>元数据)]
-        TS[(TimescaleDB<br/>时序数据 - 规划中)]
-        REDIS[(Redis<br/>缓存 - 规划中)]
+        TS[(TimescaleDB<br/>时序数据)]
+        REDIS[(Redis<br/>last_value)]
     end
 
     subgraph "外部服务"
-        MQTT[(MQTT Broker<br/>Mosquitto - 规划中)]
+        MQTT[(MQTT Broker<br/>Mosquitto)]
     end
 
     FE --> Router
@@ -52,19 +56,27 @@ graph TB
     MW2 --> Handler
     Handler --> Auth
     Handler --> Storage
+    Handler --> Control
+    Control --> MQTT
+    Control --> Storage
     Auth --> Storage
     Storage --> PG
-    Storage -.->|规划中| TS
-    Storage -.->|规划中| REDIS
-    Handler -.->|规划中| MQTT
+    Storage --> TS
+    Storage --> REDIS
+
+    MQTT --> Ingest
+    MQTT --> Control
+    Ingest --> Normalize
+    Normalize --> Pipeline
+    Pipeline --> Storage
 
     style FE fill:#e1f5ff
     style Handler fill:#fff4e6
     style Storage fill:#f0fff4f
     style PG fill:#4caf50
-    style TS fill:#9e9e9e,stroke-dasharray: 5 5
-    style REDIS fill:#9e9e9e,stroke-dasharray: 5 5
-    style MQTT fill:#9e9e9e,stroke-dasharray: 5 5
+    style TS fill:#90caf9
+    style REDIS fill:#ef9a9a
+    style MQTT fill:#9e9e9e
 ```
 
 ---
@@ -163,7 +175,7 @@ sequenceDiagram
         else 无需项目范围
             Handler->>Storage: 执行业务逻辑
         end
-    else 公开端点 (如 /login, /health)
+    else 公开端点 (如 /login, /livez(/health), /readyz)
         MW1->>Handler: 直接传递
     end
 
@@ -543,9 +555,9 @@ sequenceDiagram
 
 ---
 
-## 规划中的功能（M3-M5）
+## 已落地与规划（M3-M5）
 
-### M3: MQTT 数据采集闭环（规划中）
+### M3: MQTT 数据采集闭环（已落地）
 
 ```mermaid
 graph TB
@@ -566,15 +578,9 @@ graph TB
     NORM -->|PointValue| PIPE
     PIPE -->|批量写入| TSDB
     PIPE -->|实时更新| REDIS
-
-    style INGEST fill:#9e9e9e,stroke-dasharray: 5 5
-    style NORM fill:#9e9e9e,stroke-dasharray: 5 5
-    style PIPE fill:#9e9e9e,stroke-dasharray: 5 5
-    style TSDB fill:#9e9e9e,stroke-dasharray: 5 5
-    style REDIS fill:#9e9e9e,stroke-dasharray: 5 5
 ```
 
-### M4: 控制下发闭环（规划中）
+### M4: 控制下发闭环（部分落地）
 
 ```mermaid
 graph TB
@@ -588,7 +594,7 @@ graph TB
     subgraph "执行与反馈"
         DEV[设备执行]
         MQTT[MQTT Broker]
-        RCP[Receipt 处理]
+        RCL[Receipt Listener]
     end
 
     subgraph "存储"
@@ -604,14 +610,17 @@ graph TB
     DISP --> MQTT
     MQTT --> DEV
     DEV --> MQTT
-    MQTT --> RCP
-    RCP --> RCTT
-    RCP --> ADT
-
-    style CMD fill:#9e9e9e,stroke-dasharray: 5 5
-    style DISP fill:#9e9e9e,stroke-dasharray: 5 5
-    style RCP fill:#9e9e9e,stroke-dasharray: 5 5
+    MQTT --> RCL
+    RCL --> RCTT
+    RCL --> ADT
+    RCL --> CMDT
+    
 ```
+
+说明：
+- Dispatcher 与回执监听已接入（`EMS_CONTROL=on`）；设备侧回执 topic 需按约定发送。
+- 命令主题：`{EMS_MQTT_COMMAND_TOPIC_PREFIX}/{tenant_id}/{project_id}/{command_id}`，Payload 为 `CreateCommandRequest.payload`。
+- 回执主题：`{EMS_MQTT_RECEIPT_TOPIC_PREFIX}/{tenant_id}/{project_id}/{command_id}`，Payload 形如 `{status, message?, tsMs?}`，回执会更新 command.status 并写审计。
 
 ### M5: 告警框架（规划中）
 
@@ -647,8 +656,10 @@ graph TB
 1. ✅ **认证流程**：用户登录 → JWT 签发 → Token 存储 → 后续请求携带
 2. ✅ **API 请求**：request_context → JWT 验证 → TenantContext 提取 → 项目归属验证 → Storage 调用
 3. ✅ **数据 CRUD**：前端验证 → Handler 验证 → Storage 执行 → PostgreSQL 查询 → DTO 转换 → 响应返回
-4. ✅ **动态路由**：Token 验证 → 角色权限提取 → 路由生成 → 前端注册 → 菜单显示
-5. ✅ **多租户隔离**：JWT 提取 tenant_id → SQL 过滤 tenant_id → 跨租户访问阻止
+4. ✅ **采集链路**：MQTT → RawEvent → normalize → pipeline → Timescale/Redis
+5. ✅ **控制基础链路**：commands/audit/receipts API → CommandService → MQTT Dispatcher → Receipt Listener → 审计与回执写入
+6. ✅ **动态路由**：Token 验证 → 角色权限提取 → 路由生成 → 前端注册 → 菜单显示
+7. ✅ **多租户隔离**：JWT 提取 tenant_id → SQL 过滤 tenant_id → 跨租户访问阻止
 
 **关键设计原则：**
 - 📐 **依赖方向**：domain → storage → handler → api
@@ -658,8 +669,5 @@ graph TB
 - 🗄️ **SQL 集中**：所有数据库操作在 storage 层，handler 无 SQL
 
 **下一步扩展方向：**
-- 📡 实现 MQTT 采集（M3）
-- 🎮 实现控制下发（M4）
 - 🚨 实现告警引擎（M5）
-- 📊 集成 TimescaleDB 时序存储
-- ⚡ 集成 Redis 实时缓存
+- 🧪 设备侧回执对接与控制闭环验证

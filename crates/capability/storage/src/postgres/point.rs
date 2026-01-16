@@ -152,6 +152,11 @@ impl PointStore for PgPointStore {
         }))
     }
 
+    /// 删除点位（级联删除所有关联资源）
+    ///
+    /// 删除顺序：
+    /// 1. 点位映射 (point_sources) - 属于该点位的所有映射
+    /// 2. 点位 (points) - 点位本身
     async fn delete_point(
         &self,
         ctx: &TenantContext,
@@ -159,14 +164,33 @@ impl PointStore for PgPointStore {
         point_id: &str,
     ) -> Result<bool, StorageError> {
         ensure_project_scope(ctx, project_id)?;
-        let result = sqlx::query(
-            "delete from points where tenant_id = $1 and project_id = $2 and point_id = $3",
+
+        // 使用事务确保级联删除的原子性
+        let mut tx = self.pool.begin().await?;
+
+        // 1. 删除点位映射（属于该点位的所有映射）
+        sqlx::query(
+            "DELETE FROM point_sources WHERE tenant_id = $1 AND project_id = $2 AND point_id = $3",
         )
         .bind(&ctx.tenant_id)
         .bind(project_id)
         .bind(point_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+
+        // 2. 删除点位本身
+        let result = sqlx::query(
+            "DELETE FROM points WHERE tenant_id = $1 AND project_id = $2 AND point_id = $3",
+        )
+        .bind(&ctx.tenant_id)
+        .bind(project_id)
+        .bind(point_id)
+        .execute(&mut *tx)
+        .await?;
+
+        // 提交事务
+        tx.commit().await?;
+
         Ok(result.rows_affected() > 0)
     }
 }

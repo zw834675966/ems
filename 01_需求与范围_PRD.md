@@ -13,7 +13,7 @@
 3) 设备通过 MQTT 上报数据  
 4) 系统写入时序库并更新实时 last_value  
 5) 前端查询实时与历史曲线/列表  
-6) 用户发起控制命令，系统下发并记录回执与审计  
+6) 用户发起控制命令，系统下发并记录审计/回执（设备侧待对接）  
 
 ## 2. 功能范围
 ### 2.1 必须有（MVP）
@@ -22,12 +22,12 @@
 - 项目内资源：Gateway/Device/Point/PointSource CRUD  
 - 数据链路：ingest(MQTT) → normalize → pipeline → storage(timescale + redis)  
 - 查询：realtime(last_value) + measurements(历史)  
-- 控制：commands 下发 + receipt + audit  
+- 控制：commands 下发 + receipt + audit（MQTT 下发已接入，设备侧待对接）  
 
 ### 2.2 应该有（MVP+）
-- 在线状态：gateway/device online  
-- 基础质量：坏质量标记/离线标记/简单范围校验  
-- 批写与背压：写入保护  
+- 在线状态：gateway/device online（已落地：采集写入触达 Redis + API 透出 online/lastSeenAtMs）  
+- 基础质量：坏质量标记/离线标记/简单范围校验（仅校验非法值/过期值）  
+- 批写与背压：写入保护（已落地，MVP 实现）  
 
 ### 2.3 可以延后（Post-MVP）
 - Modbus TCP 等协议扩展  
@@ -49,4 +49,13 @@
   - 创建项目资源  
   - 用 MQTT 模拟写入点位  
   - 查询 realtime 与历史  
-  - 发起控制并看到审计与回执
+  - 发起控制并看到审计/回执（设备侧待对接，需开启 EMS_CONTROL）
+
+## 5. 实现对齐备注（当前）
+- 控制链路已具备 `commands`/`audit`/`receipts` API，Dispatcher 使用 MQTT 下发（`EMS_CONTROL=on` 才启用）。
+- 命令主题约定：`{EMS_MQTT_COMMAND_TOPIC_PREFIX}/{tenant_id}/{project_id}/{command_id}`，Payload 为 camelCase JSON：
+  - `commandId`、`target`、`issuedAtMs`、`payload`（业务 payload 原样透传）
+- 回执主题约定：`{EMS_MQTT_RECEIPT_TOPIC_PREFIX}/{tenant_id}/{project_id}/{command_id}`，Payload 形如 `{status, message?, tsMs?}`（camelCase）。
+- 回执写入会更新 command.status，并写入审计日志 `CONTROL.COMMAND.RECEIPT`。
+  - 未收到回执时：command.status 维持 `accepted`。
+  - 若启用回执超时（`EMS_CONTROL_RECEIPT_TIMEOUT_SECONDS`，默认 30 秒）：到期仍为 `accepted` 将自动流转为 `timeout`，并写入审计 `CONTROL.COMMAND.TIMEOUT`。

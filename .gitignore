@@ -6,3 +6,4 @@ mcp-shell.log
 web/
 package.json
 pnpm-lock.yaml
+.data/
