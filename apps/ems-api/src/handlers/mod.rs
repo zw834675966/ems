@@ -2,6 +2,7 @@
 
 pub mod audit;
 pub mod auth;
+pub mod collection_strategy;
 pub mod commands;
 pub mod devices;
 pub mod gateways;
@@ -15,6 +16,7 @@ pub mod realtime;
 
 pub use audit::*;
 pub use auth::*;
+pub use collection_strategy::*;
 pub use commands::*;
 pub use devices::*;
 pub use gateways::*;

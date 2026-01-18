@@ -16,7 +16,7 @@
 
 use crate::error::ProtocolError;
 use crate::modbus_tcp::ProtocolEventHandler;
-use crate::types::{ProtocolEvent, now_epoch_ms};
+use crate::types::{now_epoch_ms, ProtocolEvent};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -104,8 +104,8 @@ impl TcpClientSource {
 
     /// 从 JSON 配置字符串解析
     pub fn from_json(json: &str) -> Result<Self, ProtocolError> {
-        let config: TcpClientConfig = serde_json::from_str(json)
-            .map_err(|e| ProtocolError::ConfigParse(e.to_string()))?;
+        let config: TcpClientConfig =
+            serde_json::from_str(json).map_err(|e| ProtocolError::ConfigParse(e.to_string()))?;
         Ok(Self::new(config))
     }
 
@@ -115,24 +115,21 @@ impl TcpClientSource {
     }
 
     /// 运行采集循环
-    pub async fn run(
-        &self,
-        handler: Arc<dyn ProtocolEventHandler>,
-    ) -> Result<(), ProtocolError> {
+    pub async fn run(&self, handler: Arc<dyn ProtocolEventHandler>) -> Result<(), ProtocolError> {
         if self.tasks.is_empty() {
             warn!("no poll tasks configured for tcp client source");
             return Ok(());
         }
 
         let addr = format!("{}:{}", self.config.host, self.config.port);
-        
+
         loop {
             info!("connecting to tcp server at {}", addr);
 
             match TcpStream::connect(&addr).await {
                 Ok(stream) => {
                     info!("connected to tcp server at {}", addr);
-                    
+
                     if let Err(e) = self.poll_loop(stream, &handler).await {
                         error!("poll loop error: {}", e);
                     }
@@ -146,10 +143,7 @@ impl TcpClientSource {
                 break;
             }
 
-            warn!(
-                "reconnecting in {}ms...",
-                self.config.reconnect_interval_ms
-            );
+            warn!("reconnecting in {}ms...", self.config.reconnect_interval_ms);
             tokio::time::sleep(Duration::from_millis(self.config.reconnect_interval_ms)).await;
         }
 
@@ -186,8 +180,8 @@ impl TcpClientSource {
                     writer
                         .write_all(cmd_with_delimiter.as_bytes())
                         .await
-                        .map_err(|e| ProtocolError::Io(e))?;
-                    writer.flush().await.map_err(|e| ProtocolError::Io(e))?;
+                        .map_err(ProtocolError::Io)?;
+                    writer.flush().await.map_err(ProtocolError::Io)?;
 
                     debug!(command = %cmd, "sent request command");
                 }

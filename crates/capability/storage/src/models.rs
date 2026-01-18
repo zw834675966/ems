@@ -249,6 +249,8 @@ pub struct PointRecord {
     pub key: String,
     pub data_type: String,
     pub unit: Option<String>,
+    /// 协议细节配置（JSON 格式）
+    pub protocol_detail: Option<String>,
 }
 
 /// 点位更新输入。
@@ -257,6 +259,7 @@ pub struct PointUpdate {
     pub key: Option<String>,
     pub data_type: Option<String>,
     pub unit: Option<String>,
+    pub protocol_detail: Option<String>,
 }
 
 /// 点位映射记录。
@@ -349,4 +352,121 @@ pub struct AuditLogRecord {
     pub result: String,
     pub detail: Option<String>,
     pub ts_ms: i64,
+}
+
+// ============================================================================
+// 采集策略模型
+// ============================================================================
+
+/// 采集间隔时间单位
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntervalUnit {
+    /// 毫秒
+    Milliseconds,
+    /// 秒
+    Seconds,
+    /// 分钟
+    Minutes,
+}
+
+impl IntervalUnit {
+    /// 从字符串解析
+    pub fn parse(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "ms" | "milliseconds" => Self::Milliseconds,
+            "s" | "sec" | "seconds" => Self::Seconds,
+            "min" | "minute" | "minutes" => Self::Minutes,
+            _ => Self::Milliseconds,
+        }
+    }
+
+    /// 转换为字符串
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Milliseconds => "ms",
+            Self::Seconds => "s",
+            Self::Minutes => "min",
+        }
+    }
+
+    /// 转换采集间隔为毫秒
+    pub fn to_millis(&self, value: i32) -> i64 {
+        match self {
+            Self::Milliseconds => value as i64,
+            Self::Seconds => (value as i64) * 1000,
+            Self::Minutes => (value as i64) * 60 * 1000,
+        }
+    }
+}
+
+impl std::fmt::Display for IntervalUnit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// 采集策略记录。
+///
+/// 存储每个点位的自动采集配置，支持定时采集和时序数据库写入。
+#[derive(Debug, Clone)]
+pub struct CollectionStrategyRecord {
+    /// 策略唯一标识
+    pub strategy_id: String,
+    /// 租户 ID
+    pub tenant_id: String,
+    /// 项目 ID
+    pub project_id: String,
+    /// 点位 ID
+    pub point_id: String,
+    /// 是否启用采集
+    pub enabled: bool,
+    /// 采集间隔数值
+    pub interval_value: i32,
+    /// 采集间隔单位
+    pub interval_unit: String,
+    /// 是否写入时序数据库
+    pub write_to_db: bool,
+    /// 最后采集时间（毫秒时间戳）
+    pub last_collected_at: Option<i64>,
+    /// 最后采集值
+    pub last_value: Option<String>,
+    /// 最后错误信息
+    pub last_error: Option<String>,
+    /// 创建时间（毫秒时间戳）
+    pub created_at: Option<i64>,
+    /// 更新时间（毫秒时间戳）
+    pub updated_at: Option<i64>,
+}
+
+impl CollectionStrategyRecord {
+    /// 获取采集间隔（毫秒）
+    pub fn interval_millis(&self) -> i64 {
+        let unit = IntervalUnit::parse(&self.interval_unit);
+        unit.to_millis(self.interval_value)
+    }
+}
+
+/// 采集策略创建输入。
+#[derive(Debug, Clone)]
+pub struct CollectionStrategyCreate {
+    pub strategy_id: String,
+    pub tenant_id: String,
+    pub project_id: String,
+    pub point_id: String,
+    pub enabled: bool,
+    pub interval_value: i32,
+    pub interval_unit: String,
+    pub write_to_db: bool,
+}
+
+/// 采集策略更新输入。
+#[derive(Debug, Clone, Default)]
+pub struct CollectionStrategyUpdate {
+    pub enabled: Option<bool>,
+    pub interval_value: Option<i32>,
+    pub interval_unit: Option<String>,
+    pub write_to_db: Option<bool>,
+    pub last_collected_at: Option<i64>,
+    pub last_value: Option<String>,
+    pub last_error: Option<String>,
 }

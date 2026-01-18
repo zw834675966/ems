@@ -15,7 +15,7 @@
 
 use crate::error::ProtocolError;
 use crate::modbus_tcp::ProtocolEventHandler;
-use crate::types::{ProtocolEvent, now_epoch_ms};
+use crate::types::{now_epoch_ms, ProtocolEvent};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -80,8 +80,8 @@ impl TcpServerSource {
 
     /// 从 JSON 配置字符串解析
     pub fn from_json(json: &str) -> Result<Self, ProtocolError> {
-        let config: TcpServerConfig = serde_json::from_str(json)
-            .map_err(|e| ProtocolError::ConfigParse(e.to_string()))?;
+        let config: TcpServerConfig =
+            serde_json::from_str(json).map_err(|e| ProtocolError::ConfigParse(e.to_string()))?;
         Ok(Self::new(config))
     }
 
@@ -92,24 +92,21 @@ impl TcpServerSource {
     }
 
     /// 运行服务器
-    pub async fn run(
-        &self,
-        handler: Arc<dyn ProtocolEventHandler>,
-    ) -> Result<(), ProtocolError> {
+    pub async fn run(&self, handler: Arc<dyn ProtocolEventHandler>) -> Result<(), ProtocolError> {
         let addr = format!("0.0.0.0:{}", self.config.listen_port);
         let listener = TcpListener::bind(&addr).await?;
-        
+
         info!("tcp server listening on {}", addr);
 
         loop {
             match listener.accept().await {
                 Ok((stream, peer_addr)) => {
                     info!("new connection from {}", peer_addr);
-                    
+
                     let handler = Arc::clone(&handler);
                     let mappings = Arc::clone(&self.device_mappings);
                     let delimiter = self.config.frame_delimiter.clone();
-                    
+
                     tokio::spawn(async move {
                         if let Err(e) = Self::handle_connection(
                             stream,
@@ -117,7 +114,9 @@ impl TcpServerSource {
                             handler,
                             mappings,
                             delimiter,
-                        ).await {
+                        )
+                        .await
+                        {
                             warn!("connection error from {}: {}", peer_addr, e);
                         }
                     });
@@ -142,7 +141,7 @@ impl TcpServerSource {
 
         loop {
             line.clear();
-            
+
             let bytes_read = if delimiter == "\n" {
                 reader.read_line(&mut line).await?
             } else {
@@ -201,7 +200,7 @@ impl TcpServerSource {
         data: &str,
     ) -> Option<DeviceMapping> {
         let mappings = mappings.read().await;
-        
+
         // 首先尝试通过 peer_id（IP:port）查找
         if let Some(mapping) = mappings.get(peer_id) {
             return Some(mapping.clone());
@@ -260,13 +259,16 @@ mod tests {
     fn test_parse_value() {
         // 纯数值
         assert_eq!(TcpServerSource::parse_value("123.45"), Some(123.45));
-        
+
         // device_id:value 格式
         assert_eq!(TcpServerSource::parse_value("dev1:99.5"), Some(99.5));
-        
+
         // JSON 格式
-        assert_eq!(TcpServerSource::parse_value(r#"{"value": 42.0}"#), Some(42.0));
-        
+        assert_eq!(
+            TcpServerSource::parse_value(r#"{"value": 42.0}"#),
+            Some(42.0)
+        );
+
         // 无效格式
         assert_eq!(TcpServerSource::parse_value("invalid"), None);
     }

@@ -17,6 +17,12 @@ pub struct InMemoryOnlineStore {
     device: RwLock<HashMap<String, Entry>>,
 }
 
+impl Default for InMemoryOnlineStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryOnlineStore {
     pub fn new() -> Self {
         Self {
@@ -156,4 +162,3 @@ impl OnlineStore for InMemoryOnlineStore {
         Ok(result)
     }
 }
-

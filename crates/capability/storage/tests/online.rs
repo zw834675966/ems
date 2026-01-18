@@ -65,4 +65,3 @@ async fn online_list_batch() {
     assert_eq!(gateways.get("gateway-1").copied(), Some(1000));
     assert!(gateways.get("gateway-3").is_none());
 }
-

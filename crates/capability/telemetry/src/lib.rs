@@ -58,6 +58,12 @@ pub struct TelemetryMetrics {
     receipts_processed: AtomicU64,
 }
 
+impl Default for TelemetryMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TelemetryMetrics {
     pub fn new() -> Self {
         Self {
@@ -232,7 +238,5 @@ pub fn record_command_issue_latency_ms(latency_ms: u64) {
 
 /// 记录回执处理次数（MQTT 回执成功写入）。
 pub fn record_receipt_processed() {
-    metrics()
-        .receipts_processed
-        .fetch_add(1, Ordering::Relaxed);
+    metrics().receipts_processed.fetch_add(1, Ordering::Relaxed);
 }

@@ -9,7 +9,8 @@ use ems_ingest::{IngestError, MqttSource, MqttSourceConfig, NoopSource, RawEvent
 use ems_normalize::{Normalizer, StoragePointMappingProvider};
 use ems_pipeline::{Pipeline, PipelineError, StoragePointValueWriter};
 use ems_storage::{
-    DeviceStore, MeasurementStore, OnlineStore, PointMappingStore, PointStore, RealtimeStore,
+    DeviceStore, IngestWalStore, MeasurementStore, OnlineStore, PointMappingStore, PointStore,
+    RealtimeStore,
 };
 use ems_telemetry::{
     record_backpressure, record_dropped_duplicate, record_dropped_invalid, record_dropped_stale,
@@ -35,6 +36,11 @@ struct PipelineHandler {
     device_store: Arc<dyn DeviceStore>,
     /// 在线状态存储，用于记录设备和网关的活跃状态
     online_store: Arc<dyn OnlineStore>,
+    /// 采集策略存储，用于查询采集策略配置（预留供后续使用）
+    #[allow(dead_code)]
+    collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore>,
+    /// WAL 存储，用于原始事件持久化（防止崩溃丢数据）
+    wal_store: Arc<dyn IngestWalStore>,
 }
 
 #[async_trait::async_trait]
@@ -53,6 +59,16 @@ impl RawEventHandler for PipelineHandler {
             received_at_ms = event.received_at_ms,
             "raw_event_received"
         );
+
+        // 0. WAL 持久化：先写入 WAL 再处理，防止崩溃丢数据
+        let wal_id = match self.wal_store.push_event(&event).await {
+            Ok(id) => id,
+            Err(err) => {
+                warn!(target: "ems.ingest", error = %err, "wal_push_failed");
+                // WAL 写入失败时，继续处理但不保证不丢数据
+                String::new()
+            }
+        };
 
         // 1. 规整化：将原始报文转换为标准化点位值
         let value = self.normalizer.normalize(event).await.map_err(|err| {
@@ -164,6 +180,14 @@ impl RawEventHandler for PipelineHandler {
                 return Err(IngestError::Handler(err.to_string()));
             }
         }
+
+        // 4. WAL 确认：处理成功后从 WAL 中移除
+        if !wal_id.is_empty() {
+            if let Err(err) = self.wal_store.ack_event(&wal_id).await {
+                warn!(target: "ems.ingest", wal_id = %wal_id, error = %err, "wal_ack_failed");
+            }
+        }
+
         Ok(())
     }
 }
@@ -209,6 +233,9 @@ fn now_epoch_ms() -> i64 {
 /// - `measurement_store`: 历史时序数据存储
 /// - `realtime_store`: 实时点位值存储
 /// - `online_store`: 在线状态存储
+/// - `collection_strategy_store`: 采集策略存储
+/// - `wal_store`: WAL 存储（原始事件持久化）
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_ingest(
     config: &AppConfig,
     point_mapping_store: Arc<dyn PointMappingStore>,
@@ -217,6 +244,8 @@ pub fn spawn_ingest(
     measurement_store: Arc<dyn MeasurementStore>,
     realtime_store: Arc<dyn RealtimeStore>,
     online_store: Arc<dyn OnlineStore>,
+    collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore>,
+    wal_store: Arc<dyn IngestWalStore>,
 ) -> tokio::task::JoinHandle<()> {
     // 初始化规整化服务
     let provider = StoragePointMappingProvider::new(point_mapping_store);
@@ -233,6 +262,8 @@ pub fn spawn_ingest(
         point_store,
         device_store,
         online_store,
+        collection_strategy_store,
+        wal_store,
     });
 
     // 1. 如果启用了采集，启动流水线定时刷盘任务
@@ -293,6 +324,8 @@ pub fn spawn_ingest(
             password: config.mqtt_password.clone(),
             topic_prefix: config.mqtt_data_topic_prefix.clone(),
             has_source_id: config.mqtt_data_topic_has_source_id,
+            use_shared_subscription: config.mqtt_use_shared_subscription,
+            shared_group: config.mqtt_shared_group.clone(),
         };
         info!(
             "ingest source: mqtt {}:{} prefix={}",
@@ -301,7 +334,7 @@ pub fn spawn_ingest(
         Arc::new(MqttSource::new(mqtt_config))
     } else {
         info!("ingest source: noop (EMS_INGEST=off)");
-        Arc::new(NoopSource::default())
+        Arc::new(NoopSource)
     };
 
     // 3. 运行采集源任务

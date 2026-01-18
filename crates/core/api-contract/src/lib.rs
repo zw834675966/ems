@@ -282,6 +282,8 @@ pub struct CreatePointRequest {
     pub key: String,
     pub data_type: String,
     pub unit: Option<String>,
+    /// 协议细节配置（JSON 字符串）
+    pub protocol_detail: Option<String>,
 }
 
 /// 点位更新请求体。
@@ -291,6 +293,7 @@ pub struct UpdatePointRequest {
     pub key: Option<String>,
     pub data_type: Option<String>,
     pub unit: Option<String>,
+    pub protocol_detail: Option<String>,
 }
 
 /// 点位返回结构。
@@ -303,6 +306,8 @@ pub struct PointDto {
     pub key: String,
     pub data_type: String,
     pub unit: Option<String>,
+    /// 协议细节配置（JSON 字符串）
+    pub protocol_detail: Option<String>,
 }
 
 /// 点位映射创建请求体。
@@ -476,4 +481,85 @@ pub struct MetricsSnapshotDto {
     pub command_issue_latency_ms_total: u64,
     pub command_issue_latency_ms_count: u64,
     pub receipts_processed: u64,
+}
+
+// ============================================================================
+// 采集策略 (Collection Strategy) 相关 DTO
+// ============================================================================
+
+/// 批量查询多项目点位请求。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchPointsQuery {
+    /// 项目 ID 列表（逗号分隔或 JSON 数组）
+    pub project_ids: String,
+}
+
+/// 采集策略返回结构。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionStrategyDto {
+    pub strategy_id: String,
+    pub project_id: String,
+    pub point_id: String,
+    pub enabled: bool,
+    pub interval_value: i32,
+    pub interval_unit: String,
+    pub write_to_db: bool,
+    pub last_collected_at_ms: Option<i64>,
+    pub last_value: Option<String>,
+    pub last_error: Option<String>,
+}
+
+/// 创建/更新采集策略请求体。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertStrategyRequest {
+    /// 点位 ID
+    pub point_id: String,
+    /// 是否启用采集
+    pub enabled: bool,
+    /// 采集间隔数值
+    pub interval_value: i32,
+    /// 采集间隔单位: ms | s | min
+    pub interval_unit: String,
+    /// 是否写入时序数据库
+    pub write_to_db: bool,
+}
+
+/// 批量更新采集策略请求体。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchUpsertStrategiesRequest {
+    /// 策略列表
+    pub strategies: Vec<UpsertStrategyRequest>,
+}
+
+/// 批量更新启用状态请求体。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchUpdateEnabledRequest {
+    /// 策略 ID 列表
+    pub strategy_ids: Vec<String>,
+    /// 是否启用
+    pub enabled: bool,
+}
+
+/// 点位测试请求体。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PointTestRequest {
+    /// 点位 ID
+    pub point_id: String,
+}
+
+/// 点位测试结果。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PointTestResultDto {
+    pub success: bool,
+    pub point_id: String,
+    pub value: Option<String>,
+    pub error: Option<String>,
+    pub latency_ms: i64,
 }

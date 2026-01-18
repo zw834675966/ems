@@ -38,7 +38,9 @@ impl CommandReceiptStore for InMemoryCommandReceiptStore {
             .receipts
             .write()
             .map_err(|_| StorageError::new("lock failed"))?;
-        let inserted = !receipts.iter().any(|item| item.receipt_id == record.receipt_id);
+        let inserted = !receipts
+            .iter()
+            .any(|item| item.receipt_id == record.receipt_id);
         if inserted {
             receipts.push(record.clone());
         }

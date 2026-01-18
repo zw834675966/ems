@@ -69,7 +69,9 @@ impl AuthService {
                 .await
                 .map_err(|err| AuthError::Internal(err.to_string()))?;
             if !updated {
-                return Err(AuthError::Internal("password migration update failed".to_string()));
+                return Err(AuthError::Internal(
+                    "password migration update failed".to_string(),
+                ));
             }
         }
         let ctx = user.to_tenant_context();
@@ -80,7 +82,9 @@ impl AuthService {
             .await
             .map_err(|err| AuthError::Internal(err.to_string()))?;
         if !updated {
-            return Err(AuthError::Internal("refresh token binding update failed".to_string()));
+            return Err(AuthError::Internal(
+                "refresh token binding update failed".to_string(),
+            ));
         }
         Ok((user, tokens))
     }
@@ -109,7 +113,9 @@ impl AuthService {
             .await
             .map_err(|err| AuthError::Internal(err.to_string()))?;
         if !updated {
-            return Err(AuthError::Internal("refresh token rotation update failed".to_string()));
+            return Err(AuthError::Internal(
+                "refresh token rotation update failed".to_string(),
+            ));
         }
         Ok(tokens)
     }

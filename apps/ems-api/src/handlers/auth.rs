@@ -34,6 +34,7 @@
 
 use crate::AppState;
 use crate::middleware::require_tenant_context;
+use crate::utils::audit::extract_client_ip;
 use crate::utils::response::{auth_error, internal_auth_error};
 use api_contract::{
     ApiResponse, AsyncRoute, LoginRequest, LoginResponse, RefreshTokenRequest,
@@ -47,6 +48,7 @@ use axum::{
 };
 use domain::permissions;
 use ems_auth::AuthError;
+use ems_storage::{AuditBuilder, audit_actions};
 
 /// 健康检查端点
 ///
@@ -74,7 +76,10 @@ pub async fn readyz(State(state): State<AppState>) -> Response {
         return (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response();
     };
 
-    match sqlx::query_scalar::<_, i32>("select 1").fetch_one(pool).await {
+    match sqlx::query_scalar::<_, i32>("select 1")
+        .fetch_one(pool)
+        .await
+    {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response(),
         Err(err) => {
             tracing::warn!(error = %err, "readyz check failed");
@@ -112,10 +117,34 @@ pub async fn readyz(State(state): State<AppState>) -> Response {
 ///
 /// - `401 UNAUTHORIZED`: 用户名或密码错误（`InvalidCredentials`）
 /// - `500 INTERNAL SERVER ERROR`: 认证服务内部错误
-pub async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> Response {
+pub async fn login(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<LoginRequest>,
+) -> Response {
+    // 提取客户端 IP（用于审计日志）
+    let client_ip = extract_client_ip(&headers).unwrap_or_else(|| "unknown".to_string());
+
     // 调用认证服务的登录方法验证用户凭据
     match state.auth.login(&req.username, &req.password).await {
         Ok((user, tokens)) => {
+            // 登录成功，记录审计日志
+            let ctx = user.to_tenant_context();
+            let audit_record = AuditBuilder::new(&ctx, audit_actions::AUTH_LOGIN)
+                .tenant_scope() // 登录是租户级操作，无项目作用域
+                .resource_typed("user", &user.username)
+                .success()
+                .with_client_ip(&client_ip)
+                .build();
+
+            // 异步写入审计日志（不阻塞响应）
+            let audit_store = state.audit_log_store.clone();
+            tokio::spawn(async move {
+                if let Err(e) = audit_store.create_audit_log(&ctx, audit_record).await {
+                    tracing::warn!(error = %e, "failed to write login audit log");
+                }
+            });
+
             // 登录成功，构建响应
             let response = LoginResponse {
                 access_token: tokens.access_token,
@@ -131,7 +160,27 @@ pub async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>)
             (StatusCode::OK, Json(ApiResponse::success(response))).into_response()
         }
         // 用户名或密码错误，返回 401
-        Err(AuthError::InvalidCredentials) => auth_error(StatusCode::UNAUTHORIZED),
+        Err(AuthError::InvalidCredentials) => {
+            // 登录失败，记录审计日志
+            let audit_record =
+                AuditBuilder::anonymous("default", &req.username, audit_actions::AUTH_LOGIN_FAILED)
+                    .resource_typed("user", &req.username)
+                    .failure()
+                    .with_client_ip(&client_ip)
+                    .with_field("reason", "invalid_credentials")
+                    .build();
+
+            // 异步写入审计日志
+            let audit_store = state.audit_log_store.clone();
+            let ctx = domain::TenantContext::default();
+            tokio::spawn(async move {
+                if let Err(e) = audit_store.create_audit_log(&ctx, audit_record).await {
+                    tracing::warn!(error = %e, "failed to write login failure audit log");
+                }
+            });
+
+            auth_error(StatusCode::UNAUTHORIZED)
+        }
         // 其他认证服务错误，返回 500
         Err(err) => internal_auth_error(err),
     }
@@ -163,21 +212,62 @@ pub async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>)
 /// 每次刷新都会返回新的 refresh token，这是推荐的安全实践，称为 "refresh token rotation"。
 pub async fn refresh_token(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<RefreshTokenRequest>,
 ) -> Response {
+    // 提取客户端 IP（用于审计日志）
+    let client_ip = extract_client_ip(&headers).unwrap_or_else(|| "unknown".to_string());
+
     // 验证 refresh token 并生成新的 token 对
     match state.auth.refresh(&req.refresh_token).await {
         Ok(tokens) => {
+            // 刷新成功，尝试从新 token 中获取用户信息记录审计
+            // 注意：refresh 返回的 tokens 不包含用户信息，我们仍记录操作
             let response = RefreshTokenResponse {
-                access_token: tokens.access_token,
+                access_token: tokens.access_token.clone(),
                 refresh_token: tokens.refresh_token,
                 // 将秒级时间戳转换为毫秒级（前端期望的时间戳格式）
                 expires: tokens.expires_at.saturating_mul(1000),
             };
+
+            // 尝试从新 access_token 解析用户信息用于审计
+            if let Ok(ctx) = state.auth.verify_access_token(&tokens.access_token) {
+                let audit_record = AuditBuilder::new(&ctx, audit_actions::AUTH_REFRESH)
+                    .tenant_scope()
+                    .resource_typed("user", &ctx.user_id)
+                    .success()
+                    .with_client_ip(&client_ip)
+                    .build();
+
+                let audit_store = state.audit_log_store.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = audit_store.create_audit_log(&ctx, audit_record).await {
+                        tracing::warn!(error = %e, "failed to write refresh audit log");
+                    }
+                });
+            }
+
             (StatusCode::OK, Json(ApiResponse::success(response))).into_response()
         }
         // token 无效或已过期，返回 401
         Err(AuthError::TokenInvalid | AuthError::TokenExpired) => {
+            // Token 刷新失败，记录审计日志
+            let audit_record =
+                AuditBuilder::anonymous("default", "unknown", audit_actions::AUTH_REFRESH_FAILED)
+                    .resource("refresh_token")
+                    .failure()
+                    .with_client_ip(&client_ip)
+                    .with_field("reason", "token_invalid_or_expired")
+                    .build();
+
+            let audit_store = state.audit_log_store.clone();
+            let ctx = domain::TenantContext::default();
+            tokio::spawn(async move {
+                if let Err(e) = audit_store.create_audit_log(&ctx, audit_record).await {
+                    tracing::warn!(error = %e, "failed to write refresh failure audit log");
+                }
+            });
+
             auth_error(StatusCode::UNAUTHORIZED)
         }
         // 其他认证服务错误，返回 500
@@ -345,13 +435,13 @@ pub async fn get_async_routes(State(state): State<AppState>, headers: HeaderMap)
                 ),
                 children: Vec::new(),
             },
-            // 实时查询路由
+            // 采集策略路由（原实时查询）
             AsyncRoute {
                 path: "/ems/realtime".to_string(),
                 name: "EmsRealtime".to_string(),
                 component: "ems/realtime/index".to_string(),
                 meta: meta(
-                    "实时",
+                    "采集策略",
                     "ri:pulse-line",
                     6,
                     Some(vec![permissions::DATA_REALTIME_READ.to_string()]),

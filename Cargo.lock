@@ -316,6 +316,9 @@ dependencies = [
 [[package]]
 name = "domain"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "dotenvy"
@@ -460,6 +463,8 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

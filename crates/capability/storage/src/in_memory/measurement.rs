@@ -98,15 +98,15 @@ impl MeasurementStore for InMemoryMeasurementStore {
             {
                 continue;
             }
-            if let Some(from) = options.from_ms {
-                if value.ts_ms < from {
-                    continue;
-                }
+            if let Some(from) = options.from_ms
+                && value.ts_ms < from
+            {
+                continue;
             }
-            if let Some(to) = options.to_ms {
-                if value.ts_ms > to {
-                    continue;
-                }
+            if let Some(to) = options.to_ms
+                && value.ts_ms > to
+            {
+                continue;
             }
             selected.push(value.clone());
         }
@@ -114,16 +114,17 @@ impl MeasurementStore for InMemoryMeasurementStore {
         selected.sort_by_key(|item| item.ts_ms);
 
         if let Some(aggregation) = options.aggregation {
-            return Ok(aggregate_values(
-                &selected,
+            let context = AggregateContext {
+                values: &selected,
                 aggregation,
                 limit,
                 ctx,
                 project_id,
                 point_id,
-                options.order,
-                options.cursor_ts_ms,
-            ));
+                order: options.order,
+                cursor_ts_ms: options.cursor_ts_ms,
+            };
+            return Ok(aggregate_values(context));
         }
 
         if let Some(cursor_ts_ms) = options.cursor_ts_ms {
@@ -164,16 +165,29 @@ fn numeric_value(value: &PointValue) -> Option<f64> {
     }
 }
 
-fn aggregate_values(
-    values: &[PointValue],
+/// 聚合函数的上下文参数
+struct AggregateContext<'a> {
+    values: &'a [PointValue],
     aggregation: MeasurementAggregation,
     limit: usize,
-    ctx: &TenantContext,
-    project_id: &str,
-    point_id: &str,
+    ctx: &'a TenantContext,
+    project_id: &'a str,
+    point_id: &'a str,
     order: TimeOrder,
     cursor_ts_ms: Option<i64>,
-) -> Vec<MeasurementRecord> {
+}
+
+fn aggregate_values(context: AggregateContext) -> Vec<MeasurementRecord> {
+    let AggregateContext {
+        values,
+        aggregation,
+        limit,
+        ctx,
+        project_id,
+        point_id,
+        order,
+        cursor_ts_ms,
+    } = context;
     if aggregation.bucket_ms <= 0 {
         return Vec::new();
     }

@@ -19,12 +19,13 @@
 
 use crate::error::StorageError;
 use crate::models::{
-    AreaRecord, AreaUpdate, AuditLogRecord, BuildingRecord, BuildingUpdate, CommandReceiptRecord,
-    CommandRecord, DeviceRecord, DeviceUpdate, FloorRecord, FloorUpdate, GatewayRecord,
-    GatewayUpdate, MeasurementRecord, PermissionRecord, PointMappingRecord, PointMappingUpdate,
-    PointRecord, PointUpdate, ProjectRecord, ProjectUpdate, RbacRoleCreate, RbacRoleRecord,
-    RbacUserCreate, RbacUserRecord, RbacUserUpdate, RealtimeRecord, RoomRecord, RoomUpdate,
-    UserRecord,
+    AreaRecord, AreaUpdate, AuditLogRecord, BuildingRecord, BuildingUpdate,
+    CollectionStrategyCreate, CollectionStrategyRecord, CollectionStrategyUpdate,
+    CommandReceiptRecord, CommandRecord, DeviceRecord, DeviceUpdate, FloorRecord, FloorUpdate,
+    GatewayRecord, GatewayUpdate, MeasurementRecord, PermissionRecord, PointMappingRecord,
+    PointMappingUpdate, PointRecord, PointUpdate, ProjectRecord, ProjectUpdate, RbacRoleCreate,
+    RbacRoleRecord, RbacUserCreate, RbacUserRecord, RbacUserUpdate, RealtimeRecord, RoomRecord,
+    RoomUpdate, UserRecord,
 };
 use async_trait::async_trait;
 use domain::{PointValue, TenantContext};
@@ -546,16 +547,11 @@ pub trait MeasurementStore: Send + Sync {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TimeOrder {
+    #[default]
     Asc,
     Desc,
-}
-
-impl Default for TimeOrder {
-    fn default() -> Self {
-        Self::Asc
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -710,4 +706,98 @@ pub trait AuditLogStore: Send + Sync {
         to_ms: Option<i64>,
         limit: i64,
     ) -> Result<Vec<AuditLogRecord>, StorageError>;
+}
+
+// ============================================================================
+// 采集策略存储接口
+// ============================================================================
+
+/// 采集策略存储接口
+///
+/// 提供采集策略的 CRUD 操作，支持多项目批量查询。
+#[async_trait]
+pub trait CollectionStrategyStore: Send + Sync {
+    /// 列出指定项目的所有采集策略
+    async fn list_strategies(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+    ) -> Result<Vec<CollectionStrategyRecord>, StorageError>;
+
+    /// 批量查询多个项目的采集策略
+    async fn list_strategies_by_projects(
+        &self,
+        ctx: &TenantContext,
+        project_ids: &[String],
+    ) -> Result<Vec<CollectionStrategyRecord>, StorageError>;
+
+    /// 查询所有启用的采集策略（用于采集调度器）
+    async fn list_enabled_strategies(
+        &self,
+        ctx: &TenantContext,
+    ) -> Result<Vec<CollectionStrategyRecord>, StorageError>;
+
+    /// 根据点位 ID 查询采集策略
+    async fn find_by_point_id(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        point_id: &str,
+    ) -> Result<Option<CollectionStrategyRecord>, StorageError>;
+
+    /// 根据策略 ID 查询
+    async fn find_strategy(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        strategy_id: &str,
+    ) -> Result<Option<CollectionStrategyRecord>, StorageError>;
+
+    /// 创建采集策略
+    async fn create_strategy(
+        &self,
+        ctx: &TenantContext,
+        record: CollectionStrategyCreate,
+    ) -> Result<CollectionStrategyRecord, StorageError>;
+
+    /// 更新采集策略
+    async fn update_strategy(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        strategy_id: &str,
+        update: CollectionStrategyUpdate,
+    ) -> Result<Option<CollectionStrategyRecord>, StorageError>;
+
+    /// 创建或更新采集策略（根据 point_id 唯一性）
+    async fn upsert_strategy(
+        &self,
+        ctx: &TenantContext,
+        record: CollectionStrategyCreate,
+    ) -> Result<CollectionStrategyRecord, StorageError>;
+
+    /// 批量更新采集策略状态
+    async fn batch_update_enabled(
+        &self,
+        ctx: &TenantContext,
+        strategy_ids: &[String],
+        enabled: bool,
+    ) -> Result<usize, StorageError>;
+
+    /// 删除采集策略
+    async fn delete_strategy(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        strategy_id: &str,
+    ) -> Result<bool, StorageError>;
+
+    /// 更新采集状态（最后采集时间、值、错误）
+    async fn update_collection_status(
+        &self,
+        ctx: &TenantContext,
+        strategy_id: &str,
+        last_value: Option<String>,
+        last_error: Option<String>,
+    ) -> Result<bool, StorageError>;
 }

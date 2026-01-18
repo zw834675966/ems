@@ -9,8 +9,13 @@
 //! - DeviceStore: InMemoryDeviceStore
 //! - PointStore: InMemoryPointStore
 //! - PointMappingStore: InMemoryPointMappingStore
+//! - CollectionStrategyStore: InMemoryCollectionStrategyStore
+
+#![allow(clippy::new_without_default)]
+#![allow(clippy::len_without_is_empty)]
 
 pub mod audit;
+pub mod collection_strategy;
 pub mod command;
 pub mod command_receipt;
 pub mod device;
@@ -24,6 +29,7 @@ pub mod realtime;
 pub mod user;
 
 pub use audit::*;
+pub use collection_strategy::*;
 pub use command::*;
 pub use command_receipt::*;
 pub use device::*;

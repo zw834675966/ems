@@ -197,7 +197,10 @@ async fn measurements_support_cursor_and_order() {
         )
         .await
         .expect("query measurements");
-    assert_eq!(items.iter().map(|i| i.ts_ms).collect::<Vec<_>>(), vec![2000, 3000]);
+    assert_eq!(
+        items.iter().map(|i| i.ts_ms).collect::<Vec<_>>(),
+        vec![2000, 3000]
+    );
 
     let items = store
         .query_measurements(
@@ -215,7 +218,10 @@ async fn measurements_support_cursor_and_order() {
         )
         .await
         .expect("query measurements");
-    assert_eq!(items.iter().map(|i| i.ts_ms).collect::<Vec<_>>(), vec![2000, 1000]);
+    assert_eq!(
+        items.iter().map(|i| i.ts_ms).collect::<Vec<_>>(),
+        vec![2000, 1000]
+    );
 }
 
 #[tokio::test]
@@ -279,6 +285,9 @@ async fn measurements_support_aggregation() {
         )
         .await
         .expect("query measurements");
-    assert_eq!(items.iter().map(|i| i.ts_ms).collect::<Vec<_>>(), vec![1000, 2000]);
+    assert_eq!(
+        items.iter().map(|i| i.ts_ms).collect::<Vec<_>>(),
+        vec![1000, 2000]
+    );
     assert_eq!(items[0].value.parse::<f64>().ok(), Some(2.0));
 }

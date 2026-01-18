@@ -37,7 +37,7 @@ impl PointStore for PgPointStore {
     ) -> Result<Vec<PointRecord>, StorageError> {
         ensure_project_scope(ctx, project_id)?;
         let rows = sqlx::query(
-            "select point_id, tenant_id, project_id, device_id, key, data_type, unit \
+            "select point_id, tenant_id, project_id, device_id, key, data_type, unit, protocol_detail::text \
              from points where tenant_id = $1 and project_id = $2",
         )
         .bind(&ctx.tenant_id)
@@ -54,6 +54,7 @@ impl PointStore for PgPointStore {
                 key: row.try_get("key")?,
                 data_type: row.try_get("data_type")?,
                 unit: row.try_get("unit")?,
+                protocol_detail: row.try_get("protocol_detail")?,
             });
         }
         Ok(points)
@@ -67,7 +68,7 @@ impl PointStore for PgPointStore {
     ) -> Result<Option<PointRecord>, StorageError> {
         ensure_project_scope(ctx, project_id)?;
         let row = sqlx::query(
-            "select point_id, tenant_id, project_id, device_id, key, data_type, unit \
+            "select point_id, tenant_id, project_id, device_id, key, data_type, unit, protocol_detail::text \
              from points where tenant_id = $1 and project_id = $2 and point_id = $3",
         )
         .bind(&ctx.tenant_id)
@@ -86,6 +87,7 @@ impl PointStore for PgPointStore {
             key: row.try_get("key")?,
             data_type: row.try_get("data_type")?,
             unit: row.try_get("unit")?,
+            protocol_detail: row.try_get("protocol_detail")?,
         }))
     }
 
@@ -99,8 +101,8 @@ impl PointStore for PgPointStore {
             return Err(StorageError::new("tenant mismatch"));
         }
         sqlx::query(
-            "insert into points (point_id, tenant_id, project_id, device_id, key, data_type, unit) \
-             values ($1, $2, $3, $4, $5, $6, $7)",
+            "insert into points (point_id, tenant_id, project_id, device_id, key, data_type, unit, protocol_detail) \
+             values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)",
         )
         .bind(&record.point_id)
         .bind(&record.tenant_id)
@@ -109,6 +111,7 @@ impl PointStore for PgPointStore {
         .bind(&record.key)
         .bind(&record.data_type)
         .bind(&record.unit)
+        .bind(&record.protocol_detail)
         .execute(&self.pool)
         .await?;
         Ok(record)
@@ -126,13 +129,15 @@ impl PointStore for PgPointStore {
             "update points set \
              key = coalesce($1, key), \
              data_type = coalesce($2, data_type), \
-             unit = coalesce($3, unit) \
-             where tenant_id = $4 and project_id = $5 and point_id = $6 \
-             returning point_id, tenant_id, project_id, device_id, key, data_type, unit",
+             unit = coalesce($3, unit), \
+             protocol_detail = coalesce($4::jsonb, protocol_detail) \
+             where tenant_id = $5 and project_id = $6 and point_id = $7 \
+             returning point_id, tenant_id, project_id, device_id, key, data_type, unit, protocol_detail::text",
         )
         .bind(update.key)
         .bind(update.data_type)
         .bind(update.unit)
+        .bind(update.protocol_detail)
         .bind(&ctx.tenant_id)
         .bind(project_id)
         .bind(point_id)
@@ -149,6 +154,7 @@ impl PointStore for PgPointStore {
             key: row.try_get("key")?,
             data_type: row.try_get("data_type")?,
             unit: row.try_get("unit")?,
+            protocol_detail: row.try_get("protocol_detail")?,
         }))
     }
 

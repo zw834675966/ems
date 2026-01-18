@@ -147,6 +147,7 @@
 
 // 导出各个 PostgreSQL 存储实现
 pub mod audit;
+pub mod collection_strategy;
 pub mod command;
 pub mod command_receipt;
 pub mod device;
@@ -159,6 +160,7 @@ pub mod user;
 
 // 导出到 crate 根目录，方便外部引用
 pub use audit::*;
+pub use collection_strategy::*;
 pub use command::*;
 pub use command_receipt::*;
 pub use device::*;

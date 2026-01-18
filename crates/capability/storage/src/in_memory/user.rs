@@ -143,7 +143,10 @@ impl UserStore for InMemoryUserStore {
         user_id: &str,
         password_hash: &str,
     ) -> Result<bool, StorageError> {
-        let mut users = self.users.write().map_err(|_| StorageError::new("lock poisoned"))?;
+        let mut users = self
+            .users
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let Some(user) = users.get_mut(user_id) else {
             return Ok(false);
         };
@@ -159,7 +162,10 @@ impl UserStore for InMemoryUserStore {
         ctx: &TenantContext,
         user_id: &str,
     ) -> Result<Option<String>, StorageError> {
-        let users = self.users.read().map_err(|_| StorageError::new("lock poisoned"))?;
+        let users = self
+            .users
+            .read()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let Some(user) = users.get(user_id) else {
             return Ok(None);
         };
@@ -175,7 +181,10 @@ impl UserStore for InMemoryUserStore {
         user_id: &str,
         refresh_jti: Option<&str>,
     ) -> Result<bool, StorageError> {
-        let mut users = self.users.write().map_err(|_| StorageError::new("lock poisoned"))?;
+        let mut users = self
+            .users
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let Some(user) = users.get_mut(user_id) else {
             return Ok(false);
         };
@@ -190,7 +199,10 @@ impl UserStore for InMemoryUserStore {
 #[async_trait::async_trait]
 impl RbacStore for InMemoryUserStore {
     async fn list_users(&self, ctx: &TenantContext) -> Result<Vec<RbacUserRecord>, StorageError> {
-        let users = self.users.read().map_err(|_| StorageError::new("lock poisoned"))?;
+        let users = self
+            .users
+            .read()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let mut result: Vec<RbacUserRecord> = users
             .values()
             .filter(|u| u.tenant_id == ctx.tenant_id)
@@ -211,9 +223,14 @@ impl RbacStore for InMemoryUserStore {
         _ctx: &TenantContext,
         record: RbacUserCreate,
     ) -> Result<RbacUserRecord, StorageError> {
-        let mut users = self.users.write().map_err(|_| StorageError::new("lock poisoned"))?;
-        let mut usernames =
-            self.usernames.write().map_err(|_| StorageError::new("lock poisoned"))?;
+        let mut users = self
+            .users
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
+        let mut usernames = self
+            .usernames
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         if usernames.contains_key(&record.username) {
             return Err(StorageError::new("username already exists"));
         }
@@ -243,7 +260,10 @@ impl RbacStore for InMemoryUserStore {
         user_id: &str,
         update: RbacUserUpdate,
     ) -> Result<Option<RbacUserRecord>, StorageError> {
-        let mut users = self.users.write().map_err(|_| StorageError::new("lock poisoned"))?;
+        let mut users = self
+            .users
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let Some(user) = users.get_mut(user_id) else {
             return Ok(None);
         };
@@ -272,7 +292,10 @@ impl RbacStore for InMemoryUserStore {
         user_id: &str,
         roles: Vec<String>,
     ) -> Result<Option<RbacUserRecord>, StorageError> {
-        let mut users = self.users.write().map_err(|_| StorageError::new("lock poisoned"))?;
+        let mut users = self
+            .users
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let Some(user) = users.get_mut(user_id) else {
             return Ok(None);
         };
@@ -290,7 +313,10 @@ impl RbacStore for InMemoryUserStore {
     }
 
     async fn list_roles(&self, ctx: &TenantContext) -> Result<Vec<RbacRoleRecord>, StorageError> {
-        let roles = self.roles.read().map_err(|_| StorageError::new("lock poisoned"))?;
+        let roles = self
+            .roles
+            .read()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let mut result: Vec<RbacRoleRecord> = roles
             .values()
             .filter(|r| r.tenant_id == ctx.tenant_id)
@@ -310,7 +336,10 @@ impl RbacStore for InMemoryUserStore {
         _ctx: &TenantContext,
         record: RbacRoleCreate,
     ) -> Result<RbacRoleRecord, StorageError> {
-        let mut roles = self.roles.write().map_err(|_| StorageError::new("lock poisoned"))?;
+        let mut roles = self
+            .roles
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let key = tenant_role_key(&record.tenant_id, &record.role_code);
         if roles.contains_key(&key) {
             return Err(StorageError::new("role already exists"));
@@ -332,12 +361,22 @@ impl RbacStore for InMemoryUserStore {
         })
     }
 
-    async fn delete_role(&self, ctx: &TenantContext, role_code: &str) -> Result<bool, StorageError> {
-        let mut roles = self.roles.write().map_err(|_| StorageError::new("lock poisoned"))?;
+    async fn delete_role(
+        &self,
+        ctx: &TenantContext,
+        role_code: &str,
+    ) -> Result<bool, StorageError> {
+        let mut roles = self
+            .roles
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let key = tenant_role_key(&ctx.tenant_id, role_code);
         let removed = roles.remove(&key).is_some();
         if removed {
-            let mut users = self.users.write().map_err(|_| StorageError::new("lock poisoned"))?;
+            let mut users = self
+                .users
+                .write()
+                .map_err(|_| StorageError::new("lock poisoned"))?;
             for user in users.values_mut() {
                 if user.tenant_id != ctx.tenant_id {
                     continue;
@@ -354,7 +393,10 @@ impl RbacStore for InMemoryUserStore {
         role_code: &str,
         permissions: Vec<String>,
     ) -> Result<Option<RbacRoleRecord>, StorageError> {
-        let mut roles = self.roles.write().map_err(|_| StorageError::new("lock poisoned"))?;
+        let mut roles = self
+            .roles
+            .write()
+            .map_err(|_| StorageError::new("lock poisoned"))?;
         let key = tenant_role_key(&ctx.tenant_id, role_code);
         let Some(role) = roles.get_mut(&key) else {
             return Ok(None);

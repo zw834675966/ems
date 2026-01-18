@@ -7,7 +7,10 @@
 //! - 支持租户隔离查询
 
 use crate::error::StorageError;
-use crate::models::{PermissionRecord, RbacRoleCreate, RbacRoleRecord, RbacUserCreate, RbacUserRecord, RbacUserUpdate, UserRecord};
+use crate::models::{
+    PermissionRecord, RbacRoleCreate, RbacRoleRecord, RbacUserCreate, RbacUserRecord,
+    RbacUserUpdate, UserRecord,
+};
 use crate::traits::{RbacStore, UserStore};
 use domain::TenantContext;
 use sqlx::{PgPool, Row};
@@ -69,12 +72,13 @@ impl UserStore for PgUserStore {
         let username: String = row.try_get("username")?;
         let password: String = row.try_get("password_hash")?;
 
-        let roles: Vec<String> =
-            sqlx::query_scalar("select role_code from tenant_user_roles where tenant_id = $1 and user_id = $2")
-                .bind(&tenant_id)
-                .bind(&user_id)
-                .fetch_all(&self.pool)
-                .await?;
+        let roles: Vec<String> = sqlx::query_scalar(
+            "select role_code from tenant_user_roles where tenant_id = $1 and user_id = $2",
+        )
+        .bind(&tenant_id)
+        .bind(&user_id)
+        .fetch_all(&self.pool)
+        .await?;
 
         let permissions: Vec<String> = sqlx::query_scalar(
             "select distinct permission_code \
@@ -132,11 +136,13 @@ impl UserStore for PgUserStore {
                 .fetch_optional(&self.pool)
                 .await?
         } else {
-            sqlx::query_scalar("select refresh_jti from users where tenant_id = $1 and user_id = $2")
-                .bind(&ctx.tenant_id)
-                .bind(user_id)
-                .fetch_optional(&self.pool)
-                .await?
+            sqlx::query_scalar(
+                "select refresh_jti from users where tenant_id = $1 and user_id = $2",
+            )
+            .bind(&ctx.tenant_id)
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?
         };
         Ok(value)
     }
@@ -201,7 +207,8 @@ impl RbacStore for PgUserStore {
         .fetch_all(&self.pool)
         .await?;
 
-        let mut role_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut role_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
         for row in rows {
             let user_id: String = row.try_get("user_id")?;
             let role_code: String = row.try_get("role_code")?;
@@ -241,13 +248,12 @@ impl RbacStore for PgUserStore {
             roles: Vec::new(),
         };
 
-        if !record.roles.is_empty() {
-            if let Some(updated) = self
+        if !record.roles.is_empty()
+            && let Some(updated) = self
                 .set_user_roles(ctx, &created.user_id, record.roles)
                 .await?
-            {
-                created = updated;
-            }
+        {
+            created = updated;
         }
         Ok(created)
     }
@@ -301,13 +307,12 @@ impl RbacStore for PgUserStore {
         user_id: &str,
         roles: Vec<String>,
     ) -> Result<Option<RbacUserRecord>, StorageError> {
-        let exists: Option<i32> = sqlx::query_scalar(
-            "select 1 from users where tenant_id = $1 and user_id = $2",
-        )
-        .bind(&ctx.tenant_id)
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let exists: Option<i32> =
+            sqlx::query_scalar("select 1 from users where tenant_id = $1 and user_id = $2")
+                .bind(&ctx.tenant_id)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
         if exists.is_none() {
             return Ok(None);
         }
@@ -331,11 +336,13 @@ impl RbacStore for PgUserStore {
         }
         tx.commit().await?;
 
-        let row = sqlx::query("select user_id, username, status from users where tenant_id = $1 and user_id = $2")
-            .bind(&ctx.tenant_id)
-            .bind(user_id)
-            .fetch_one(&self.pool)
-            .await?;
+        let row = sqlx::query(
+            "select user_id, username, status from users where tenant_id = $1 and user_id = $2",
+        )
+        .bind(&ctx.tenant_id)
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await?;
 
         let username: String = row.try_get("username")?;
         let status: String = row.try_get("status")?;
@@ -383,7 +390,8 @@ impl RbacStore for PgUserStore {
         .fetch_all(&self.pool)
         .await?;
 
-        let mut perm_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut perm_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
         for row in rows {
             let role_code: String = row.try_get("role_code")?;
             let permission_code: String = row.try_get("permission_code")?;
@@ -440,11 +448,12 @@ impl RbacStore for PgUserStore {
         ctx: &TenantContext,
         role_code: &str,
     ) -> Result<bool, StorageError> {
-        let result = sqlx::query("delete from tenant_roles where tenant_id = $1 and role_code = $2")
-            .bind(&ctx.tenant_id)
-            .bind(role_code)
-            .execute(&self.pool)
-            .await?;
+        let result =
+            sqlx::query("delete from tenant_roles where tenant_id = $1 and role_code = $2")
+                .bind(&ctx.tenant_id)
+                .bind(role_code)
+                .execute(&self.pool)
+                .await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -454,24 +463,24 @@ impl RbacStore for PgUserStore {
         role_code: &str,
         permissions: Vec<String>,
     ) -> Result<Option<RbacRoleRecord>, StorageError> {
-        let row = sqlx::query("select role_code, name from tenant_roles where tenant_id = $1 and role_code = $2")
-            .bind(&ctx.tenant_id)
-            .bind(role_code)
-            .fetch_optional(&self.pool)
-            .await?;
+        let row = sqlx::query(
+            "select role_code, name from tenant_roles where tenant_id = $1 and role_code = $2",
+        )
+        .bind(&ctx.tenant_id)
+        .bind(role_code)
+        .fetch_optional(&self.pool)
+        .await?;
         let Some(row) = row else {
             return Ok(None);
         };
         let name: String = row.try_get("name")?;
 
         let mut tx = self.pool.begin().await?;
-        sqlx::query(
-            "delete from tenant_role_permissions where tenant_id = $1 and role_code = $2",
-        )
-        .bind(&ctx.tenant_id)
-        .bind(role_code)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("delete from tenant_role_permissions where tenant_id = $1 and role_code = $2")
+            .bind(&ctx.tenant_id)
+            .bind(role_code)
+            .execute(&mut *tx)
+            .await?;
         for permission_code in &permissions {
             sqlx::query(
                 "insert into tenant_role_permissions (tenant_id, role_code, permission_code) values ($1,$2,$3) on conflict do nothing",
@@ -496,9 +505,11 @@ impl RbacStore for PgUserStore {
         &self,
         _ctx: &TenantContext,
     ) -> Result<Vec<PermissionRecord>, StorageError> {
-        let rows = sqlx::query("select permission_code, description from permissions order by permission_code asc")
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(
+            "select permission_code, description from permissions order by permission_code asc",
+        )
+        .fetch_all(&self.pool)
+        .await?;
         let mut permissions = Vec::with_capacity(rows.len());
         for row in rows {
             let permission_code: String = row.try_get("permission_code")?;

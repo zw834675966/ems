@@ -80,6 +80,7 @@ async fn point_in_memory_crud() {
         key: "temp".to_string(),
         data_type: "float".to_string(),
         unit: Some("C".to_string()),
+        protocol_detail: None,
     };
     let created = store.create_point(&ctx, record).await.expect("create");
     assert_eq!(created.point_id, "pt-1");

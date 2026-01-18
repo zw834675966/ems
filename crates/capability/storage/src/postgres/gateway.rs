@@ -45,7 +45,7 @@ impl GatewayStore for PgGatewayStore {
     ) -> Result<Vec<GatewayRecord>, StorageError> {
         ensure_project_scope(ctx, project_id)?;
         let rows = sqlx::query(
-            "select gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config \
+            "select gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config::text \
              from gateways where tenant_id = $1 and project_id = $2",
         )
         .bind(&ctx.tenant_id)
@@ -76,7 +76,7 @@ impl GatewayStore for PgGatewayStore {
     ) -> Result<Option<GatewayRecord>, StorageError> {
         ensure_project_scope(ctx, project_id)?;
         let row = sqlx::query(
-            "select gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config \
+            "select gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config::text \
              from gateways where tenant_id = $1 and project_id = $2 and gateway_id = $3",
         )
         .bind(&ctx.tenant_id)
@@ -110,7 +110,7 @@ impl GatewayStore for PgGatewayStore {
         }
         sqlx::query(
             "insert into gateways (gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config) \
-             values ($1, $2, $3, $4, $5, $6, $7)",
+             values ($1, $2, $3, $4, $5, $6, $7::jsonb)",
         )
         .bind(&record.gateway_id)
         .bind(&record.tenant_id)
@@ -138,9 +138,9 @@ impl GatewayStore for PgGatewayStore {
              name = coalesce($1, name), \
              status = coalesce($2, status), \
              protocol_type = coalesce($3, protocol_type), \
-             protocol_config = coalesce($4, protocol_config) \
+             protocol_config = coalesce($4::jsonb, protocol_config) \
              where tenant_id = $5 and project_id = $6 and gateway_id = $7 \
-             returning gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config",
+             returning gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config::text",
         )
         .bind(update.name)
         .bind(update.status)

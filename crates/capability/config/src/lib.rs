@@ -31,6 +31,10 @@ pub struct AppConfig {
     pub mqtt_receipt_topic_prefix: String,
     pub mqtt_command_qos: u8,
     pub mqtt_receipt_qos: u8,
+    /// 是否启用 MQTT 共享订阅（支持水平扩容）
+    pub mqtt_use_shared_subscription: bool,
+    /// 共享订阅组名
+    pub mqtt_shared_group: String,
     pub ingest_enabled: bool,
     pub control_enabled: bool,
     pub control_dispatch_max_retries: u64,
@@ -63,9 +67,8 @@ impl AppConfig {
         let mqtt_password = read_optional("EMS_MQTT_PASSWORD");
         let mqtt_topic_prefix =
             env::var("EMS_MQTT_TOPIC_PREFIX").unwrap_or_else(|_| "ems".to_string());
-        let mqtt_data_topic_prefix = env::var("EMS_MQTT_DATA_TOPIC_PREFIX").unwrap_or_else(|_| {
-            format!("{}/data", mqtt_topic_prefix.trim_end_matches('/'))
-        });
+        let mqtt_data_topic_prefix = env::var("EMS_MQTT_DATA_TOPIC_PREFIX")
+            .unwrap_or_else(|_| format!("{}/data", mqtt_topic_prefix.trim_end_matches('/')));
         let mqtt_data_topic_has_source_id =
             read_bool_with_default("EMS_MQTT_DATA_TOPIC_HAS_SOURCE_ID", false);
         let mqtt_command_topic_prefix = env::var("EMS_MQTT_COMMAND_TOPIC_PREFIX")
@@ -76,6 +79,10 @@ impl AppConfig {
             .unwrap_or_else(|_| format!("{}/receipts", mqtt_topic_prefix));
         let mqtt_command_qos = read_u8_with_default("EMS_MQTT_COMMAND_QOS", 1)?;
         let mqtt_receipt_qos = read_u8_with_default("EMS_MQTT_RECEIPT_QOS", 1)?;
+        let mqtt_use_shared_subscription =
+            read_bool_with_default("EMS_MQTT_USE_SHARED_SUBSCRIPTION", false);
+        let mqtt_shared_group =
+            env::var("EMS_MQTT_SHARED_GROUP").unwrap_or_else(|_| "ems-ingest".to_string());
         let ingest_enabled = read_bool_with_default("EMS_INGEST", false);
         let control_enabled = read_bool_with_default("EMS_CONTROL", false);
         let control_dispatch_max_retries =
@@ -104,6 +111,8 @@ impl AppConfig {
             mqtt_receipt_topic_prefix,
             mqtt_command_qos,
             mqtt_receipt_qos,
+            mqtt_use_shared_subscription,
+            mqtt_shared_group,
             ingest_enabled,
             control_enabled,
             control_dispatch_max_retries,

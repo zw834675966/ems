@@ -67,7 +67,10 @@ impl JwtManager {
         self.decode(token, REFRESH_TOKEN_TYPE)
     }
 
-    pub fn decode_refresh_with_jti(&self, token: &str) -> Result<(TenantContext, String), AuthError> {
+    pub fn decode_refresh_with_jti(
+        &self,
+        token: &str,
+    ) -> Result<(TenantContext, String), AuthError> {
         let decoded = self.decode_claims(token)?;
         if decoded.token_type != REFRESH_TOKEN_TYPE {
             return Err(AuthError::TokenInvalid);

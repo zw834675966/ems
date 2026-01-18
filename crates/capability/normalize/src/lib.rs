@@ -118,14 +118,14 @@ impl PointMappingProvider for StoragePointMappingProvider {
                 .find_point_mapping(&ctx, project_id, source_id)
                 .await
                 .map_err(|err| NormalizeError::MappingProvider(err.to_string()))?;
-            if let Some(record) = record {
-                if record.address == address {
-                    return Ok(Some(PointMapping {
-                        point_id: record.point_id,
-                        scale: record.scale,
-                        offset: record.offset,
-                    }));
-                }
+            if let Some(record) = record
+                && record.address == address
+            {
+                return Ok(Some(PointMapping {
+                    point_id: record.point_id,
+                    scale: record.scale,
+                    offset: record.offset,
+                }));
             }
         }
 

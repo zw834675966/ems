@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use domain::TenantContext;
-use ems_telemetry::{
-    record_command_dispatch_failure, record_command_dispatch_success, record_command_issue_latency_ms,
-    record_command_issued, record_receipt_processed,
-};
 use ems_storage::{
-    AuditLogRecord, AuditLogStore, CommandReceiptRecord, CommandReceiptStore, CommandRecord,
-    CommandReceiptWriteResult, CommandStore,
+    AuditLogRecord, AuditLogStore, CommandReceiptRecord, CommandReceiptStore,
+    CommandReceiptWriteResult, CommandRecord, CommandStore,
+};
+use ems_telemetry::{
+    record_command_dispatch_failure, record_command_dispatch_success,
+    record_command_issue_latency_ms, record_command_issued, record_receipt_processed,
 };
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use std::sync::Arc;
@@ -116,11 +116,20 @@ impl MqttDispatcher {
         ))
     }
 
-    fn topic_for(&self, tenant_id: &str, project_id: &str, target: &str, command_id: &str) -> String {
+    fn topic_for(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        target: &str,
+        command_id: &str,
+    ) -> String {
         let prefix = self.command_topic_prefix.trim_end_matches('/');
         if self.include_target_in_topic {
             let target = target.trim_matches('/');
-            format!("{}/{}/{}/{}/{}", prefix, tenant_id, project_id, target, command_id)
+            format!(
+                "{}/{}/{}/{}/{}",
+                prefix, tenant_id, project_id, target, command_id
+            )
         } else {
             format!("{}/{}/{}/{}", prefix, tenant_id, project_id, command_id)
         }
@@ -309,22 +318,12 @@ pub struct CommandService {
     config: CommandServiceConfig,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CommandServiceConfig {
     pub dispatch_max_retries: u64,
     pub dispatch_backoff_ms: u64,
     /// 等待设备回执的超时（毫秒）。到期仍为 `accepted` 则自动流转为 `timeout`。
     pub receipt_timeout_ms: u64,
-}
-
-impl Default for CommandServiceConfig {
-    fn default() -> Self {
-        Self {
-            dispatch_max_retries: 0,
-            dispatch_backoff_ms: 0,
-            receipt_timeout_ms: 0,
-        }
-    }
 }
 
 impl CommandService {
@@ -333,7 +332,12 @@ impl CommandService {
         audit_store: Arc<dyn AuditLogStore>,
         dispatcher: Arc<dyn CommandDispatcher>,
     ) -> Self {
-        Self::new_with_config(command_store, audit_store, dispatcher, CommandServiceConfig::default())
+        Self::new_with_config(
+            command_store,
+            audit_store,
+            dispatcher,
+            CommandServiceConfig::default(),
+        )
     }
 
     pub fn new_with_config(
@@ -537,17 +541,18 @@ fn extract_receipt_scope(prefix: &str, topic: &str) -> Option<(String, String, S
         topic.strip_prefix(prefix)?
     };
     let rest = rest.trim_start_matches('/');
-    let parts: Vec<&str> = rest
-        .split('/')
-        .filter(|part| !part.is_empty())
-        .collect();
+    let parts: Vec<&str> = rest.split('/').filter(|part| !part.is_empty()).collect();
     if parts.len() < 3 {
         return None;
     }
     let tenant_id = parts[0];
     let project_id = parts[1];
     let command_id = parts[parts.len() - 1];
-    Some((tenant_id.to_string(), project_id.to_string(), command_id.to_string()))
+    Some((
+        tenant_id.to_string(),
+        project_id.to_string(),
+        command_id.to_string(),
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -590,8 +595,7 @@ fn parse_receipt_payload(payload: &[u8]) -> Result<ParsedReceiptPayload, String>
         });
     }
 
-    let receipt: ReceiptPayload =
-        serde_json::from_slice(payload).map_err(|err| err.to_string())?;
+    let receipt: ReceiptPayload = serde_json::from_slice(payload).map_err(|err| err.to_string())?;
     if receipt.status.trim().is_empty() {
         return Err("missing status".to_string());
     }

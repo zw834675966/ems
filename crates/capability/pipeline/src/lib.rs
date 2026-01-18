@@ -84,10 +84,10 @@ impl DedupState {
         if self.capacity == 0 {
             return false;
         }
-        if let Some((existing, _)) = self.map.get(&key) {
-            if existing == &signature {
-                return true;
-            }
+        if let Some((existing, _)) = self.map.get(&key)
+            && existing == &signature
+        {
+            return true;
         }
         self.counter = self.counter.saturating_add(1);
         let token = self.counter;
@@ -292,10 +292,10 @@ fn validate_value(value: &PointValue, max_age_ms: Option<i64>) -> Option<String>
     if value.ts_ms <= 0 {
         return Some("invalid_ts".to_string());
     }
-    if let PointValueData::F64(v) = &value.value {
-        if !v.is_finite() {
-            return Some("invalid_value".to_string());
-        }
+    if let PointValueData::F64(v) = &value.value
+        && !v.is_finite()
+    {
+        return Some("invalid_value".to_string());
     }
     if let Some(max_age) = max_age_ms {
         let now = now_epoch_ms();

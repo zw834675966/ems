@@ -32,10 +32,7 @@ pub fn create_api_router() -> Router<AppState> {
         .route("/refresh-token", post(refresh_token))
         .route("/get-async-routes", get(get_async_routes))
         .route("/rbac/users", get(list_rbac_users).post(create_rbac_user))
-        .route(
-            "/rbac/users/:user_id",
-            axum::routing::put(update_rbac_user),
-        )
+        .route("/rbac/users/:user_id", axum::routing::put(update_rbac_user))
         .route(
             "/rbac/users/:user_id/roles",
             axum::routing::put(set_rbac_user_roles),
@@ -99,5 +96,23 @@ pub fn create_api_router() -> Router<AppState> {
             get(get_point_mapping)
                 .put(update_point_mapping)
                 .delete(delete_point_mapping),
+        )
+        // 采集策略路由
+        .route("/points/batch", get(list_points_batch))
+        .route(
+            "/projects/:project_id/collection-strategies",
+            get(list_strategies).post(upsert_strategies),
+        )
+        .route(
+            "/projects/:project_id/collection-strategies/batch-enabled",
+            post(batch_update_enabled),
+        )
+        .route(
+            "/projects/:project_id/collection-strategies/:strategy_id",
+            axum::routing::delete(delete_strategy),
+        )
+        .route(
+            "/projects/:project_id/points/:point_id/test",
+            post(test_point),
         )
 }

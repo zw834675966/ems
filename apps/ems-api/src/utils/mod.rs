@@ -1,5 +1,6 @@
 //! 工具函数模块
 
+pub mod audit;
 pub mod response;
 pub mod validation;
 

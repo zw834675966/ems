@@ -83,11 +83,11 @@
 //!
 //! ## 依赖的内部 crate
 //!
-//! - [`ems_auth`]: 认证服务（JWT 令牌管理、用户认证）
-//! - [`ems_config`]: 应用配置管理
-//! - [`ems_storage`]: 存储层抽象和实现（PostgreSQL、Redis）
-//! - [`ems_control`]: 设备控制服务（MQTT 指令分发）
-//! - [`ems_telemetry`]: 遥测和日志系统
+//! - `ems_auth`: 认证服务（JWT 令牌管理、用户认证）
+//! - `ems_config`: 应用配置管理
+//! - `ems_storage`: 存储层抽象和实现（PostgreSQL、Redis）
+//! - `ems_control`: 设备控制服务（MQTT 指令分发）
+//! - `ems_telemetry`: 遥测和日志系统
 
 // ============================================================================
 // 本地模块声明
@@ -375,6 +375,11 @@ struct AppState {
     /// - 处理重试逻辑和超时
     /// - 记录审计日志
     command_service: Arc<CommandService>,
+
+    /// 采集策略存储
+    ///
+    /// 管理点位的采集策略配置，包括采集频率、上报方式等。
+    collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore>,
 }
 
 /// 主函数：EMS API 服务的入口点
@@ -509,6 +514,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 审计日志存储：记录用户操作日志
     let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
         Arc::new(PgAuditLogStore::new(pool.clone()));
+    // 采集策略存储：管理点位采集配置
+    let collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore> =
+        Arc::new(ems_storage::PgCollectionStrategyStore::new(pool.clone()));
 
     // ========================================================================
     // 8. 初始化设备控制服务（MQTT 分发器）
@@ -534,7 +542,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Arc::new(mqtt_dispatcher), Some(handle))
     } else {
         // 控制功能禁用，使用空操作分发器
-        (Arc::new(NoopDispatcher::default()), None)
+        (Arc::new(NoopDispatcher), None)
     };
 
     // 创建控制指令服务（封装指令创建、分发、重试逻辑）
@@ -578,6 +586,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. 将数据写入历史存储（PostgreSQL）
     // 3. 更新实时缓存（Redis 最新值）
     // 4. 更新设备在线状态
+    // 5. 使用 WAL 确保数据不丢失
+    let wal_store: Arc<dyn ems_storage::IngestWalStore> = Arc::new(
+        ems_storage::RedisIngestWalStore::connect(&config.redis_url)?,
+    );
     let _ingest_handle = ingest::spawn_ingest(
         &config,
         point_mapping_store.clone(),
@@ -586,6 +598,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         measurement_store.clone(),
         realtime_store.clone(),
         online_store.clone(),
+        collection_strategy_store.clone(),
+        wal_store,
     );
 
     // ========================================================================
@@ -611,6 +625,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         command_receipt_store,
         audit_log_store,
         command_service,
+        collection_strategy_store,
     };
 
     // ========================================================================
@@ -744,6 +759,7 @@ mod tests {
             command_receipt_store,
             audit_log_store,
             command_service,
+            collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
         }
     }
 

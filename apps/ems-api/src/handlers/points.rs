@@ -102,6 +102,7 @@ pub async fn create_point(
         key,
         data_type,
         unit: req.unit,
+        protocol_detail: req.protocol_detail,
     };
     match state.point_store.create_point(&ctx, record).await {
         Ok(item) => (
@@ -174,6 +175,7 @@ pub async fn update_point(
         key,
         data_type,
         unit,
+        protocol_detail: req.protocol_detail,
     };
     match state
         .point_store

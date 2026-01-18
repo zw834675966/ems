@@ -24,10 +24,11 @@ pub struct ProtocolEvent {
 }
 
 /// Modbus 寄存器数据类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModbusDataType {
     /// 16位有符号整数
+    #[default]
     Int16,
     /// 16位无符号整数
     Uint16,
@@ -41,29 +42,18 @@ pub enum ModbusDataType {
     Float64,
 }
 
-impl Default for ModbusDataType {
-    fn default() -> Self {
-        Self::Int16
-    }
-}
-
 /// Modbus 功能码
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ModbusFunctionCode {
     /// 读线圈状态 (0x01)
     ReadCoils = 1,
     /// 读离散输入 (0x02)
     ReadDiscreteInputs = 2,
     /// 读保持寄存器 (0x03)
+    #[default]
     ReadHoldingRegisters = 3,
     /// 读输入寄存器 (0x04)
     ReadInputRegisters = 4,
-}
-
-impl Default for ModbusFunctionCode {
-    fn default() -> Self {
-        Self::ReadHoldingRegisters
-    }
 }
 
 /// 点位协议详情（Modbus）

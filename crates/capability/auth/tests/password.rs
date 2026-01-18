@@ -13,7 +13,13 @@ fn legacy_plaintext_upgrades() {
     let stored = "admin123";
     let check = verify_password_and_maybe_upgrade(stored, "admin123").expect("check");
     assert!(check.verified);
-    assert!(check.upgrade_hash.as_deref().unwrap_or_default().starts_with("$argon2"));
+    assert!(
+        check
+            .upgrade_hash
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("$argon2")
+    );
 }
 
 #[test]
@@ -23,4 +29,3 @@ fn wrong_password_rejected() {
     assert!(!check.verified);
     assert!(check.upgrade_hash.is_none());
 }
-

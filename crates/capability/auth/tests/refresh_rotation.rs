@@ -10,10 +10,7 @@ async fn refresh_token_is_single_use_after_rotation() {
     let auth = AuthService::new(user_store, jwt);
 
     let (_, tokens1) = auth.login("admin", "admin123").await.expect("login");
-    let tokens2 = auth
-        .refresh(&tokens1.refresh_token)
-        .await
-        .expect("refresh");
+    let tokens2 = auth.refresh(&tokens1.refresh_token).await.expect("refresh");
     assert_ne!(tokens1.refresh_token, tokens2.refresh_token);
 
     let result = auth.refresh(&tokens1.refresh_token).await;

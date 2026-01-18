@@ -1,8 +1,8 @@
 //! Redis 实时数据写入实现
 
 use crate::error::StorageError;
-use crate::online::OnlineStore;
 use crate::models::RealtimeRecord;
+use crate::online::OnlineStore;
 use crate::traits::RealtimeStore;
 use crate::validation::ensure_project_scope;
 use domain::{PointValue, PointValueData, TenantContext};
@@ -108,7 +108,7 @@ impl RedisRealtimeStore {
         let client =
             redis::Client::open(redis_url).map_err(|err| StorageError::new(err.to_string()))?;
         let ttl = match last_value_ttl_seconds {
-            Some(value) if value == 0 => None,
+            Some(0) => None,
             Some(value) => Some(value),
             None => None,
         };

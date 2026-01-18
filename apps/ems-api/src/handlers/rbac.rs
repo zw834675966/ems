@@ -2,7 +2,10 @@
 
 use crate::AppState;
 use crate::middleware::{require_permission, require_tenant_context};
-use crate::utils::response::{bad_request_error, internal_auth_error, not_found_error, storage_error};
+use crate::utils::audit::extract_client_ip;
+use crate::utils::response::{
+    bad_request_error, internal_auth_error, not_found_error, storage_error,
+};
 use api_contract::{
     ApiResponse, CreateRbacRoleRequest, CreateRbacUserRequest, PermissionDto, RbacRoleDto,
     RbacUserDto, SetRolePermissionsRequest, SetUserRolesRequest, UpdateRbacUserRequest,
@@ -15,7 +18,7 @@ use axum::{
 };
 use domain::permissions;
 use ems_auth::hash_password;
-use ems_storage::{PermissionRecord, RbacRoleRecord, RbacUserRecord};
+use ems_storage::{AuditBuilder, PermissionRecord, RbacRoleRecord, RbacUserRecord, audit_actions};
 use uuid::Uuid;
 
 fn user_to_dto(record: RbacUserRecord) -> RbacUserDto {
@@ -83,6 +86,8 @@ pub async fn create_rbac_user(
         return response;
     }
 
+    let client_ip = extract_client_ip(&headers).unwrap_or_else(|| "unknown".to_string());
+
     let username = req.username.trim().to_string();
     if username.is_empty() {
         return bad_request_error("username is required");
@@ -91,7 +96,7 @@ pub async fn create_rbac_user(
         return bad_request_error("password is required");
     }
     let status = req.status.unwrap_or_else(|| "active".to_string());
-    let roles = req.roles.unwrap_or_default();
+    let roles = req.roles.clone().unwrap_or_default();
 
     if !roles.is_empty() {
         let known = match state.rbac_store.list_roles(&ctx).await {
@@ -119,14 +124,37 @@ pub async fn create_rbac_user(
     let record = ems_storage::RbacUserCreate {
         tenant_id: ctx.tenant_id.clone(),
         user_id: Uuid::new_v4().to_string(),
-        username,
+        username: username.clone(),
         password: password_hash,
         status,
-        roles,
+        roles: roles.clone(),
     };
     match state.rbac_store.create_user(&ctx, record).await {
-        Ok(created) => (StatusCode::OK, Json(ApiResponse::success(user_to_dto(created))))
-            .into_response(),
+        Ok(created) => {
+            // 记录用户创建审计日志
+            let audit_record = AuditBuilder::new(&ctx, audit_actions::RBAC_USER_CREATE)
+                .tenant_scope()
+                .resource_typed("user", &created.user_id)
+                .success()
+                .with_client_ip(&client_ip)
+                .with_field("username", &username)
+                .with_field("roles", &roles)
+                .build();
+
+            let audit_store = state.audit_log_store.clone();
+            let ctx_clone = ctx.clone();
+            tokio::spawn(async move {
+                if let Err(e) = audit_store.create_audit_log(&ctx_clone, audit_record).await {
+                    tracing::warn!(error = %e, "failed to write user create audit log");
+                }
+            });
+
+            (
+                StatusCode::OK,
+                Json(ApiResponse::success(user_to_dto(created))),
+            )
+                .into_response()
+        }
         Err(err) => storage_error(err),
     }
 }
@@ -174,7 +202,10 @@ pub async fn update_rbac_user(
         )
         .await
     {
-        Ok(Some(updated)) => (StatusCode::OK, Json(ApiResponse::success(user_to_dto(updated))))
+        Ok(Some(updated)) => (
+            StatusCode::OK,
+            Json(ApiResponse::success(user_to_dto(updated))),
+        )
             .into_response(),
         Ok(None) => not_found_error(),
         Err(err) => storage_error(err),
@@ -194,6 +225,9 @@ pub async fn set_rbac_user_roles(
     if let Err(response) = require_permission(&ctx, permissions::RBAC_USER_WRITE) {
         return response;
     }
+
+    let client_ip = extract_client_ip(&headers).unwrap_or_else(|| "unknown".to_string());
+    let new_roles = req.roles.clone();
 
     let known = match state.rbac_store.list_roles(&ctx).await {
         Ok(items) => items
@@ -217,8 +251,30 @@ pub async fn set_rbac_user_roles(
         .set_user_roles(&ctx, &path.user_id, req.roles)
         .await
     {
-        Ok(Some(updated)) => (StatusCode::OK, Json(ApiResponse::success(user_to_dto(updated))))
-            .into_response(),
+        Ok(Some(updated)) => {
+            // 记录用户角色变更审计日志
+            let audit_record = AuditBuilder::new(&ctx, audit_actions::RBAC_USER_ROLES_CHANGE)
+                .tenant_scope()
+                .resource_typed("user", &path.user_id)
+                .success()
+                .with_client_ip(&client_ip)
+                .with_field("new_roles", &new_roles)
+                .build();
+
+            let audit_store = state.audit_log_store.clone();
+            let ctx_clone = ctx.clone();
+            tokio::spawn(async move {
+                if let Err(e) = audit_store.create_audit_log(&ctx_clone, audit_record).await {
+                    tracing::warn!(error = %e, "failed to write user roles change audit log");
+                }
+            });
+
+            (
+                StatusCode::OK,
+                Json(ApiResponse::success(user_to_dto(updated))),
+            )
+                .into_response()
+        }
         Ok(None) => not_found_error(),
         Err(err) => storage_error(err),
     }
@@ -279,10 +335,7 @@ pub async fn create_rbac_role(
             .cloned()
             .collect();
         if !unknown.is_empty() {
-            return bad_request_error(format!(
-                "unknown permissions: {}",
-                unknown.join(",")
-            ));
+            return bad_request_error(format!("unknown permissions: {}", unknown.join(",")));
         }
     }
 
@@ -294,7 +347,10 @@ pub async fn create_rbac_role(
     };
 
     match state.rbac_store.create_role(&ctx, record).await {
-        Ok(created) => (StatusCode::OK, Json(ApiResponse::success(role_to_dto(created))))
+        Ok(created) => (
+            StatusCode::OK,
+            Json(ApiResponse::success(role_to_dto(created))),
+        )
             .into_response(),
         Err(err) => storage_error(err),
     }
@@ -348,10 +404,7 @@ pub async fn set_rbac_role_permissions(
         .cloned()
         .collect();
     if !unknown.is_empty() {
-        return bad_request_error(format!(
-            "unknown permissions: {}",
-            unknown.join(",")
-        ));
+        return bad_request_error(format!("unknown permissions: {}", unknown.join(",")));
     }
 
     match state
@@ -359,7 +412,10 @@ pub async fn set_rbac_role_permissions(
         .set_role_permissions(&ctx, &path.role_code, req.permissions)
         .await
     {
-        Ok(Some(updated)) => (StatusCode::OK, Json(ApiResponse::success(role_to_dto(updated))))
+        Ok(Some(updated)) => (
+            StatusCode::OK,
+            Json(ApiResponse::success(role_to_dto(updated))),
+        )
             .into_response(),
         Ok(None) => not_found_error(),
         Err(err) => storage_error(err),
@@ -377,10 +433,7 @@ pub async fn list_rbac_permissions(State(state): State<AppState>, headers: Heade
 
     match state.rbac_store.list_permissions(&ctx).await {
         Ok(items) => {
-            let items = items
-                .into_iter()
-                .map(permission_to_dto)
-                .collect::<Vec<_>>();
+            let items = items.into_iter().map(permission_to_dto).collect::<Vec<_>>();
             (StatusCode::OK, Json(ApiResponse::success(items))).into_response()
         }
         Err(err) => storage_error(err),
@@ -431,6 +484,7 @@ mod tests {
             command_store,
             command_receipt_store,
             audit_log_store,
+            collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
             command_service,
         }
     }

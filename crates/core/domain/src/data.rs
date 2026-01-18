@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// 协议输入原始事件。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawEvent {
     pub tenant_id: String,
     pub project_id: String,
@@ -10,7 +12,7 @@ pub struct RawEvent {
 }
 
 /// 点位值的数据类型。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PointValueData {
     I64(i64),
     F64(f64),
@@ -19,7 +21,7 @@ pub enum PointValueData {
 }
 
 /// 规范化后的点位值。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointValue {
     pub tenant_id: String,
     pub project_id: String,

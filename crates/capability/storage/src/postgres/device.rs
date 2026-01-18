@@ -81,7 +81,7 @@ impl DeviceStore for PgDeviceStore {
 
         // 查询指定租户和项目下的所有设备
         let rows = sqlx::query(
-            "select device_id, tenant_id, project_id, gateway_id, name, model, room_id, address_config \
+            "select device_id, tenant_id, project_id, gateway_id, name, model, room_id, address_config::text \
              from devices where tenant_id = $1 and project_id = $2",
         )
         .bind(&ctx.tenant_id)
@@ -128,7 +128,7 @@ impl DeviceStore for PgDeviceStore {
 
         // 使用三重条件查询：租户 + 项目 + 设备 ID
         let row = sqlx::query(
-            "select device_id, tenant_id, project_id, gateway_id, name, model, room_id, address_config \
+            "select device_id, tenant_id, project_id, gateway_id, name, model, room_id, address_config::text \
              from devices where tenant_id = $1 and project_id = $2 and device_id = $3",
         )
         .bind(&ctx.tenant_id)
@@ -180,7 +180,7 @@ impl DeviceStore for PgDeviceStore {
         // 执行插入操作
         sqlx::query(
             "insert into devices (device_id, tenant_id, project_id, gateway_id, name, model, room_id, address_config) \
-             values ($1, $2, $3, $4, $5, $6, $7, $8)",
+             values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)",
         )
         .bind(&record.device_id)
         .bind(&record.tenant_id)
@@ -229,9 +229,9 @@ impl DeviceStore for PgDeviceStore {
              name = coalesce($1, name), \
              model = coalesce($2, model), \
              room_id = coalesce($3, room_id), \
-             address_config = coalesce($4, address_config) \
+             address_config = coalesce($4::jsonb, address_config) \
              where tenant_id = $5 and project_id = $6 and device_id = $7 \
-             returning device_id, tenant_id, project_id, gateway_id, name, model, room_id, address_config",
+             returning device_id, tenant_id, project_id, gateway_id, name, model, room_id, address_config::text",
         )
         .bind(update.name)
         .bind(update.model)

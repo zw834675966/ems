@@ -43,7 +43,10 @@ pub async fn list_commands(
     };
     if let Err(response) = require_any_permission(
         &ctx,
-        &[permissions::CONTROL_COMMAND_READ, permissions::CONTROL_COMMAND_ISSUE],
+        &[
+            permissions::CONTROL_COMMAND_READ,
+            permissions::CONTROL_COMMAND_ISSUE,
+        ],
     ) {
         return response;
     }
@@ -108,7 +111,10 @@ pub async fn list_command_receipts(
     };
     if let Err(response) = require_any_permission(
         &ctx,
-        &[permissions::CONTROL_COMMAND_READ, permissions::CONTROL_COMMAND_ISSUE],
+        &[
+            permissions::CONTROL_COMMAND_READ,
+            permissions::CONTROL_COMMAND_ISSUE,
+        ],
     ) {
         return response;
     }

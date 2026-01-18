@@ -218,6 +218,7 @@ mod tests {
             command_store,
             command_receipt_store,
             audit_log_store,
+            collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
             command_service,
         };
 
@@ -274,6 +275,7 @@ mod tests {
             command_store,
             command_receipt_store,
             audit_log_store,
+            collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
             command_service,
         };
         let (_, tokens) = state.auth.login("admin", "admin123").await.expect("login");
@@ -322,6 +324,7 @@ mod tests {
             command_store,
             command_receipt_store,
             audit_log_store,
+            collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
             command_service,
         };
         let (_, tokens) = state.auth.login("admin", "admin123").await.expect("login");

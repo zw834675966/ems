@@ -2,9 +2,7 @@
 
 use crate::error::StorageError;
 use crate::models::MeasurementRecord;
-use crate::traits::{
-    MeasurementAggFn, MeasurementStore, MeasurementsQueryOptions, TimeOrder,
-};
+use crate::traits::{MeasurementAggFn, MeasurementStore, MeasurementsQueryOptions, TimeOrder};
 use crate::validation::ensure_project_scope;
 use domain::{PointValue, PointValueData, TenantContext};
 use sqlx::{PgPool, Row};
@@ -106,8 +104,15 @@ impl MeasurementStore for PgMeasurementStore {
         }
 
         if let Some(aggregation) = options.aggregation {
-            return query_measurements_aggregated(self, ctx, project_id, point_id, options, aggregation)
-                .await;
+            return query_measurements_aggregated(
+                self,
+                ctx,
+                project_id,
+                point_id,
+                options,
+                aggregation,
+            )
+            .await;
         }
 
         query_measurements_raw(self, ctx, project_id, point_id, options).await

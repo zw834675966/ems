@@ -125,6 +125,7 @@ impl ModbusTcpSource {
     }
 
     /// 从设备和点位配置添加任务
+    #[allow(clippy::too_many_arguments)]
     pub fn add_task_from_config(
         &mut self,
         tenant_id: &str,

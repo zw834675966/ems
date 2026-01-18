@@ -26,10 +26,10 @@ pub fn ensure_tenant(ctx: &TenantContext) -> Result<(), StorageError> {
 /// 确保在正确的项目作用域内访问项目资源。
 pub fn ensure_project_scope(ctx: &TenantContext, project_id: &str) -> Result<(), StorageError> {
     ensure_tenant(ctx)?;
-    if let Some(scope) = ctx.project_scope.as_deref() {
-        if scope != project_id {
-            return Err(StorageError::new("project scope mismatch"));
-        }
+    if let Some(scope) = ctx.project_scope.as_deref()
+        && scope != project_id
+    {
+        return Err(StorageError::new("project scope mismatch"));
     }
     Ok(())
 }

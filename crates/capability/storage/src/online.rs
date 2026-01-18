@@ -57,4 +57,3 @@ pub trait OnlineStore: Send + Sync {
         device_ids: &[String],
     ) -> Result<std::collections::HashMap<String, i64>, StorageError>;
 }
-

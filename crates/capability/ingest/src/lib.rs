@@ -47,6 +47,10 @@ pub struct MqttSourceConfig {
     pub password: Option<String>,
     pub topic_prefix: String,
     pub has_source_id: bool,
+    /// 是否启用共享订阅（支持水平扩容）
+    pub use_shared_subscription: bool,
+    /// 共享订阅组名（默认 ems-ingest）
+    pub shared_group: String,
 }
 
 /// MQTT 采集源（占位实现）。
@@ -79,7 +83,13 @@ impl Source for MqttSource {
         }
 
         let (client, mut eventloop) = rumqttc::AsyncClient::new(options, 10);
-        let topic = format!("{}/#", self.config.topic_prefix.trim_end_matches('/'));
+        // 构建订阅 Topic：如果启用共享订阅，使用 $share/<group>/<topic> 格式
+        let base_topic = format!("{}/#", self.config.topic_prefix.trim_end_matches('/'));
+        let topic = if self.config.use_shared_subscription {
+            format!("$share/{}/{}", self.config.shared_group, base_topic)
+        } else {
+            base_topic
+        };
         client
             .subscribe(topic, rumqttc::QoS::AtMostOnce)
             .await
@@ -88,14 +98,17 @@ impl Source for MqttSource {
         loop {
             match eventloop.poll().await {
                 Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(publish))) => {
-                    let (tenant_id, project_id, source_id, address) =
-                        match extract_scope(&self.config.topic_prefix, &publish.topic, self.config.has_source_id) {
-                            Some(scope) => scope,
-                            None => {
-                                warn!("mqtt topic skipped: {}", publish.topic);
-                                continue;
-                            }
-                        };
+                    let (tenant_id, project_id, source_id, address) = match extract_scope(
+                        &self.config.topic_prefix,
+                        &publish.topic,
+                        self.config.has_source_id,
+                    ) {
+                        Some(scope) => scope,
+                        None => {
+                            warn!("mqtt topic skipped: {}", publish.topic);
+                            continue;
+                        }
+                    };
                     let event = RawEvent {
                         tenant_id,
                         project_id,
@@ -115,7 +128,11 @@ impl Source for MqttSource {
     }
 }
 
-fn extract_scope(prefix: &str, topic: &str, has_source_id: bool) -> Option<(String, String, String, String)> {
+fn extract_scope(
+    prefix: &str,
+    topic: &str,
+    has_source_id: bool,
+) -> Option<(String, String, String, String)> {
     let prefix = prefix.trim_matches('/');
     let topic = topic.trim_matches('/');
     let rest = if prefix.is_empty() {
@@ -141,7 +158,12 @@ fn extract_scope(prefix: &str, topic: &str, has_source_id: bool) -> Option<(Stri
     if address.is_empty() {
         return None;
     }
-    Some((tenant_id.to_string(), project_id.to_string(), source_id, address))
+    Some((
+        tenant_id.to_string(),
+        project_id.to_string(),
+        source_id,
+        address,
+    ))
 }
 
 fn now_epoch_ms() -> i64 {

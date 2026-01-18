@@ -1,0 +1,300 @@
+# ============================================================================
+# EMS 生产环境 Docker Compose 配置
+# ============================================================================
+#
+# 本配置文件用于生产环境部署，包含：
+# - 所有服务的 restart: always 策略
+# - PostgreSQL 和 Redis 的资源限制
+# - 健康检查配置
+# - 网络隔离
+#
+# 使用方法：
+#   docker compose -f deploy/docker-compose.prod.yml up -d
+#
+# 注意事项：
+#   1. 生产环境必须修改 .env 中的敏感信息
+#   2. SSL 证书需挂载到 nginx 容器
+#   3. 建议使用外部 PostgreSQL 和 Redis 服务
+# ============================================================================
+
+services:
+  # ==========================================================================
+  # 数据库：PostgreSQL + TimescaleDB
+  # ==========================================================================
+  postgres:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: ems-postgres
+    restart: always
+    
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ems}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
+      POSTGRES_DB: ${POSTGRES_DB:-ems}
+      # TimescaleDB 调优参数
+      TIMESCALEDB_TELEMETRY: "off"
+    
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2"
+        reservations:
+          memory: 512M
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ems} -d ${POSTGRES_DB:-ems}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    networks:
+      - ems-internal
+    
+    # 数据库配置优化（通过 command 覆盖默认配置）
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=1536MB"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "log_min_duration_statement=1000"
+
+  # ==========================================================================
+  # 缓存：Redis
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ems-redis
+    restart: always
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+        reservations:
+          memory: 64M
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    
+    # 持久化配置
+    command: redis-server --appendonly yes --maxmemory 450mb --maxmemory-policy allkeys-lru
+    
+    volumes:
+      - redis_data:/data
+    
+    networks:
+      - ems-internal
+
+  # ==========================================================================
+  # 消息队列：Mosquitto MQTT
+  # ==========================================================================
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: ems-mqtt
+    restart: always
+    
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/passwd:/mosquitto/passwd:ro
+      - mqtt_data:/mosquitto/data
+    
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-u", "${MQTT_USER:-ems}", "-P", "${MQTT_PASSWORD:-emsmqtt}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    networks:
+      - ems-internal
+
+  # ==========================================================================
+  # 数据库初始化（一次性任务）
+  # ==========================================================================
+  db-init:
+    image: ${EMS_API_IMAGE:-ems-api:latest}
+    container_name: ems-db-init
+    restart: "no"
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+    
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ems}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${POSTGRES_DB:-ems}
+      EMS_REQUIRE_TIMESCALE: "on"
+    
+    command: ["sh", "-c", "/app/scripts/db-init.sh"]
+    
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./migrations:/app/migrations:ro
+    
+    networks:
+      - ems-internal
+
+  # ==========================================================================
+  # EMS API 后端
+  # ==========================================================================
+  ems-api:
+    image: ${EMS_API_IMAGE:-ems-api:latest}
+    container_name: ems-api
+    restart: always
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mqtt:
+        condition: service_started
+      db-init:
+        condition: service_completed_successfully
+    
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ems}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${POSTGRES_DB:-ems}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-3600}
+      JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-604800}
+      HTTP_ADDR: 0.0.0.0:8080
+      
+      # MQTT 配置
+      EMS_CONTROL_ENABLED: "on"
+      MQTT_HOST: mqtt
+      MQTT_PORT: 1883
+      MQTT_USERNAME: ${MQTT_USER:-ems}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-emsmqtt}
+      
+      # TimescaleDB
+      EMS_REQUIRE_TIMESCALE: "on"
+      
+      # Rust 日志级别
+      RUST_LOG: ${RUST_LOG:-info,ems_api=info,tower_http=info}
+    
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2"
+        reservations:
+          memory: 256M
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    networks:
+      - ems-internal
+
+  # ==========================================================================
+  # EMS Web Admin 前端
+  # ==========================================================================
+  ems-web-admin:
+    image: ${EMS_WEB_IMAGE:-ems-web-admin:latest}
+    container_name: ems-web-admin
+    restart: always
+    
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    networks:
+      - ems-internal
+
+  # ==========================================================================
+  # Nginx 反向代理
+  # ==========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: ems-nginx
+    restart: always
+    
+    depends_on:
+      - ems-api
+      - ems-web-admin
+    
+    ports:
+      - "80:80"
+      - "443:443"
+    
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./certbot:/var/www/certbot:ro
+    
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+    
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    networks:
+      - ems-internal
+      - ems-public
+
+# ============================================================================
+# 数据卷
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  mqtt_data:
+    driver: local
+
+# ============================================================================
+# 网络
+# ============================================================================
+networks:
+  # 内部网络（服务间通信）
+  ems-internal:
+    driver: bridge
+    internal: true
+  
+  # 公共网络（外部访问）
+  ems-public:
+    driver: bridge

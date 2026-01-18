@@ -1,11 +1,5 @@
 use crate::AuthError;
-use argon2::{
-    Argon2,
-    PasswordHash,
-    PasswordHasher,
-    PasswordVerifier,
-    password_hash::SaltString,
-};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
 use rand_core::OsRng;
 use subtle::ConstantTimeEq;
 
@@ -31,16 +25,17 @@ pub fn verify_password_and_maybe_upgrade(
         let parsed = PasswordHash::new(stored_password_hash)
             .map_err(|err| AuthError::Internal(err.to_string()))?;
         let argon2 = Argon2::default();
-        let verified = argon2
-            .verify_password(password.as_bytes(), &parsed)
-            .is_ok();
+        let verified = argon2.verify_password(password.as_bytes(), &parsed).is_ok();
         return Ok(PasswordCheck {
             verified,
             upgrade_hash: None,
         });
     }
 
-    let verified: bool = stored_password_hash.as_bytes().ct_eq(password.as_bytes()).into();
+    let verified: bool = stored_password_hash
+        .as_bytes()
+        .ct_eq(password.as_bytes())
+        .into();
     if !verified {
         return Ok(PasswordCheck {
             verified: false,

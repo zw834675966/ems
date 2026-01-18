@@ -31,6 +31,7 @@ pub fn has_permission(ctx: &TenantContext, permission: &str) -> bool {
     ctx.permissions.iter().any(|item| item == permission)
 }
 
+#[allow(clippy::result_large_err)]
 pub fn require_permission(ctx: &TenantContext, permission: &str) -> Result<(), Response> {
     if has_permission(ctx, permission) {
         Ok(())
@@ -39,11 +40,15 @@ pub fn require_permission(ctx: &TenantContext, permission: &str) -> Result<(), R
     }
 }
 
+#[allow(clippy::result_large_err)]
 pub fn require_any_permission(ctx: &TenantContext, permissions: &[&str]) -> Result<(), Response> {
     if permissions.is_empty() {
         return Ok(());
     }
-    if permissions.iter().any(|permission| has_permission(ctx, permission)) {
+    if permissions
+        .iter()
+        .any(|permission| has_permission(ctx, permission))
+    {
         Ok(())
     } else {
         Err(forbidden_error())
@@ -85,6 +90,7 @@ pub fn bearer_token(headers: &HeaderMap) -> Option<&str> {
 }
 
 /// 验证并提取租户上下文
+#[allow(clippy::result_large_err)]
 pub fn require_tenant_context(
     state: &AppState,
     headers: &HeaderMap,

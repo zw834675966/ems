@@ -145,6 +145,7 @@ pub fn point_to_dto(record: PointRecord) -> PointDto {
         key: record.key,
         data_type: record.data_type,
         unit: record.unit,
+        protocol_detail: record.protocol_detail,
     }
 }
 

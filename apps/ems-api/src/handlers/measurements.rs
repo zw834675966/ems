@@ -38,10 +38,10 @@ pub async fn list_measurements(
         Ok(value) => value,
         Err(response) => return response,
     };
-    if let (Some(from), Some(to)) = (query.from, query.to) {
-        if from > to {
-            return bad_request_error("from must be <= to");
-        }
+    if let (Some(from), Some(to)) = (query.from, query.to)
+        && from > to
+    {
+        return bad_request_error("from must be <= to");
     }
     let limit = query.limit.unwrap_or(1000);
     if limit <= 0 || limit > 5000 {
@@ -89,6 +89,7 @@ pub async fn list_measurements(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_order(value: Option<&str>) -> Result<TimeOrder, Response> {
     match value.map(|value| value.trim().to_ascii_lowercase()) {
         None => Ok(TimeOrder::Asc),
@@ -99,6 +100,7 @@ fn parse_order(value: Option<&str>) -> Result<TimeOrder, Response> {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_aggregation(
     bucket_ms: Option<i64>,
     agg: Option<&str>,

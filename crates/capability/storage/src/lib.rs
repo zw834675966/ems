@@ -139,35 +139,46 @@
 //! - **连接池调优**：支持动态调整连接池大小
 
 // 模块导出：将子模块的内容导出到 crate 根目录
+pub mod audit_actions;
+pub mod audit_builder;
 pub mod connection;
 pub mod error;
 pub mod in_memory;
+pub mod ingest_wal;
 pub mod models;
 pub mod online;
 pub mod postgres;
 pub mod redis;
+pub mod token_blacklist;
 pub mod traits;
 pub mod validation;
 
 // 导出常用类型到 crate 根目录，方便外部引用
+pub use audit_builder::AuditBuilder;
 pub use connection::*;
 pub use error::*;
+pub use ingest_wal::{InMemoryIngestWalStore, IngestWalStore, RedisIngestWalStore, WalEntry};
 pub use models::*;
 pub use online::*;
-pub use redis::RedisRealtimeStore;
 pub use redis::RedisOnlineStore;
+pub use redis::RedisRealtimeStore;
+pub use token_blacklist::{
+    InMemoryTokenBlacklistStore, RedisTokenBlacklistStore, TokenBlacklistStore,
+};
 pub use traits::*;
 pub use validation::*;
 
 // 导出内存存储实现类型
 pub use in_memory::{
-    InMemoryAuditLogStore, InMemoryCommandReceiptStore, InMemoryCommandStore, InMemoryDeviceStore,
-    InMemoryGatewayStore, InMemoryMeasurementStore, InMemoryPointMappingStore, InMemoryPointStore,
-    InMemoryOnlineStore, InMemoryProjectStore, InMemoryRealtimeStore, InMemoryUserStore,
+    InMemoryAuditLogStore, InMemoryCollectionStrategyStore, InMemoryCommandReceiptStore,
+    InMemoryCommandStore, InMemoryDeviceStore, InMemoryGatewayStore, InMemoryMeasurementStore,
+    InMemoryOnlineStore, InMemoryPointMappingStore, InMemoryPointStore, InMemoryProjectStore,
+    InMemoryRealtimeStore, InMemoryUserStore,
 };
 
 // 导出 PostgreSQL 存储实现类型
 pub use postgres::{
-    PgAuditLogStore, PgCommandReceiptStore, PgCommandStore, PgDeviceStore, PgGatewayStore,
-    PgMeasurementStore, PgPointMappingStore, PgPointStore, PgProjectStore, PgUserStore,
+    PgAuditLogStore, PgCollectionStrategyStore, PgCommandReceiptStore, PgCommandStore,
+    PgDeviceStore, PgGatewayStore, PgMeasurementStore, PgPointMappingStore, PgPointStore,
+    PgProjectStore, PgUserStore,
 };

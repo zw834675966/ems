@@ -36,7 +36,7 @@ impl PointMappingStore for PgPointMappingStore {
         project_id: &str,
     ) -> Result<Vec<PointMappingRecord>, StorageError> {
         let rows = sqlx::query(
-            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail \
+            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail::text \
              from point_sources where tenant_id = $1 and project_id = $2",
         )
         .bind(&ctx.tenant_id)
@@ -68,7 +68,7 @@ impl PointMappingStore for PgPointMappingStore {
     ) -> Result<Option<PointMappingRecord>, StorageError> {
         ensure_project_scope(ctx, project_id)?;
         let row = sqlx::query(
-            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail \
+            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail::text \
              from point_sources where tenant_id = $1 and project_id = $2 and source_id = $3",
         )
         .bind(&ctx.tenant_id)
@@ -103,7 +103,7 @@ impl PointMappingStore for PgPointMappingStore {
         }
         sqlx::query(
             "insert into point_sources (source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail) \
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)",
         )
         .bind(&record.source_id)
         .bind(&record.tenant_id)
@@ -111,8 +111,8 @@ impl PointMappingStore for PgPointMappingStore {
         .bind(&record.point_id)
         .bind(&record.source_type)
         .bind(&record.address)
-        .bind(&record.scale)
-        .bind(&record.offset)
+        .bind(record.scale)
+        .bind(record.offset)
         .bind(&record.protocol_detail)
         .execute(&self.pool)
         .await?;
@@ -133,9 +133,9 @@ impl PointMappingStore for PgPointMappingStore {
              address = coalesce($2, address), \
              scale = coalesce($3, scale), \
              offset_value = coalesce($4, offset_value), \
-             protocol_detail = coalesce($5, protocol_detail) \
+             protocol_detail = coalesce($5::jsonb, protocol_detail) \
              where tenant_id = $6 and project_id = $7 and source_id = $8 \
-             returning source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail",
+             returning source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail::text",
         )
         .bind(update.source_type)
         .bind(update.address)
