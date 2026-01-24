@@ -1,0 +1,123 @@
+/* ============================================
+   THEME INTEGRATION - Refined Luxury Color System
+   ============================================ */
+
+/* Light Theme - Warm Cream Base */
+html[data-theme="light"] {
+  --pure-theme-sub-menu-active-text: var(--color-cream-900);
+  --pure-theme-menu-bg: #fff;
+  --pure-theme-menu-hover: var(--color-cream-100);
+  --pure-theme-sub-menu-bg: #fff;
+  --pure-theme-menu-text: var(--color-cream-700);
+  --pure-theme-sidebar-logo: #fff;
+  --pure-theme-menu-title-hover: var(--color-cream-900);
+  --pure-theme-menu-active-before: var(--color-amber-500);
+}
+
+/* Default Theme - Deep Charcoal with Amber */
+html[data-theme="default"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #1a1816;
+  --pure-theme-menu-hover: rgb(212 168 83 / 15%);
+  --pure-theme-sub-menu-bg: #131210;
+  --pure-theme-menu-text: rgb(250 249 247 / 65%);
+  --pure-theme-sidebar-logo: #25231f;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: var(--color-amber-500);
+}
+
+/* Deep Luxury Purple */
+html[data-theme="saucePurple"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #1a161e;
+  --pure-theme-menu-hover: rgb(139 92 246 / 15%);
+  --pure-theme-sub-menu-bg: #0f0c12;
+  --pure-theme-menu-text: rgb(250 249 247 / 60%);
+  --pure-theme-sidebar-logo: #25202d;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: #8b5cf6;
+}
+
+/* Soft Rose */
+html[data-theme="pink"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #1e1619;
+  --pure-theme-menu-hover: rgb(244 114 182 / 15%);
+  --pure-theme-sub-menu-bg: #0f0c0d;
+  --pure-theme-menu-text: rgb(250 249 247 / 60%);
+  --pure-theme-sidebar-logo: #2d1d23;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: #f472b6;
+}
+
+/* Deep Burnt Orange */
+html[data-theme="dusk"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #1e1715;
+  --pure-theme-menu-hover: rgb(249 115 85 / 15%);
+  --pure-theme-sub-menu-bg: #0f0b0a;
+  --pure-theme-menu-text: rgb(250 249 247 / 60%);
+  --pure-theme-sidebar-logo: #2d221f;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: #f9735c;
+}
+
+/* Rich Terra Cotta */
+html[data-theme="volcano"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #1e1814;
+  --pure-theme-menu-hover: rgb(239 68 68 / 15%);
+  --pure-theme-sub-menu-bg: #0f0c0a;
+  --pure-theme-menu-text: rgb(250 249 247 / 60%);
+  --pure-theme-sidebar-logo: #2d241f;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: #ef4444;
+}
+
+/* Deep Emerald */
+html[data-theme="mingQing"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #0f1916;
+  --pure-theme-menu-hover: rgb(16 185 129 / 15%);
+  --pure-theme-sub-menu-bg: #080d0b;
+  --pure-theme-menu-text: rgb(250 249 247 / 60%);
+  --pure-theme-sidebar-logo: #162823;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: #10b981;
+}
+
+/* Deep Sage */
+html[data-theme="auroraGreen"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #141915;
+  --pure-theme-menu-hover: rgb(132 204 164 / 15%);
+  --pure-theme-sub-menu-bg: #0a0d0a;
+  --pure-theme-menu-text: rgb(250 249 247 / 60%);
+  --pure-theme-sidebar-logo: #20281f;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: #84cca4;
+}
+
+/* Elegant Deep Blue */
+html[data-theme="midnightBlue"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #0f141e;
+  --pure-theme-menu-hover: rgb(99 102 241 / 15%);
+  --pure-theme-sub-menu-bg: #080a10;
+  --pure-theme-menu-text: rgb(250 249 247 / 60%);
+  --pure-theme-sidebar-logo: #1a2140;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: #6366f1;
+}
+
+/* Sophisticated Teal */
+html[data-theme="teal"] {
+  --pure-theme-sub-menu-active-text: #fff;
+  --pure-theme-menu-bg: #0f1a1a;
+  --pure-theme-menu-hover: rgb(20 184 166 / 15%);
+  --pure-theme-sub-menu-bg: #080d0d;
+  --pure-theme-menu-text: rgb(250 249 247 / 60%);
+  --pure-theme-sidebar-logo: #1a2c2c;
+  --pure-theme-menu-title-hover: #fff;
+  --pure-theme-menu-active-before: #14b8a6;
+}

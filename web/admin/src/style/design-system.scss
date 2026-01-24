@@ -1,0 +1,231 @@
+/* ============================================
+   GLOBAL DESIGN TOKENS - Apple Aesthetics
+   ============================================ */
+
+:root {
+  /* Typography - San Francisco Style */
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Color Palette - Cool, Clean, Minimal */
+  --color-gray-50: #f5f5f7;
+  /* Apple Light Gray Background */
+  --color-gray-100: #e8e8ed;
+  --color-gray-200: #d2d2d7;
+  --color-gray-300: #aeaeb2;
+  --color-gray-400: #86868b;
+  --color-gray-500: #6e6e73;
+  --color-gray-600: #424245;
+  /* Text Secondary */
+  --color-gray-700: #1d1d1f;
+  /* Text Primary */
+  --color-gray-800: #121212;
+  --color-gray-900: #000000;
+
+  /* Apple System Colors */
+  --color-blue: #0071e3;
+  /* Apple Link Blue */
+  --color-blue-hover: #0077ed;
+  --color-indigo: #5e5ce6;
+  --color-purple: #bf5af2;
+  --color-pink: #ff375f;
+  --color-red: #ff3b30;
+  --color-orange: #ff9500;
+  --color-yellow: #ffcc00;
+  --color-green: #28cd41;
+  --color-teal: #59adc4;
+  --color-cyan: #55bef0;
+
+  /* Semantic Colors */
+  --color-primary: var(--color-blue);
+  --color-success: var(--color-green);
+  --color-warning: var(--color-orange);
+  --color-danger: var(--color-red);
+  --color-info: var(--color-blue);
+
+  /* Backgrounds */
+  --bg-page: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-overlay: rgba(255, 255, 255, 0.8);
+
+  /* Shadows - Extremely subtle, diffuse */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.1);
+  --shadow-2xl: 0 24px 64px rgba(0, 0, 0, 0.12);
+
+  /* Border Radius - Consistent curvature */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-full: 9999px;
+
+  /* Spacing Scale - Consistent rhythm */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-base: 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transition-smooth: 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Z-Index Scale */
+  --z-dropdown: 1000;
+  --z-fixed: 1030;
+  --z-modal: 1050;
+  --z-tooltip: 1070;
+}
+
+/* ============================================
+   GLOBAL RESET & BASE STYLES
+   ============================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.47059;
+  color: var(--color-gray-700);
+  background-color: var(--bg-page);
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-gray-900);
+  margin-bottom: var(--space-4);
+  letter-spacing: -0.022em;
+}
+
+h1 {
+  font-size: 40px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 32px;
+  font-weight: 700;
+}
+
+h3 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+h4 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+a {
+  color: var(--color-blue);
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
+/* ============================================
+   UTILITY CLASSES - Apple Glass & Premium UI
+   ============================================ */
+
+/* Apple-style Glassmorphism */
+.apple-glass {
+  background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(25px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(25px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Obsidian Glass (Dark Mode) */
+html.dark .apple-glass {
+  background: rgba(30, 30, 30, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Premium Shadows */
+.apple-shadow {
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08) !important;
+}
+
+.apple-shadow-lg {
+  box-shadow: 0 16px 48px 0 rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Motion Utilities */
+.animate-slide-up {
+  animation: slide-up 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Containers */
+.apple-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+/* Layout Utilities */
+.flex-c {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-b {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}

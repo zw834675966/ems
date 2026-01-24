@@ -1,0 +1,84 @@
+@use "element-plus/theme-chalk/src/dark/css-vars.scss" as *;
+
+/* ============================================
+   DARK MODE - Apple Obsidian Aesthetic
+   ============================================ */
+
+html.dark {
+  --bg-page: #000000;
+  --bg-secondary: #1a1a1f;
+
+  --color-gray-700: #f5f5f7;
+  /* High contrast text */
+  --color-gray-600: #a1a1a6;
+  /* Secondary text */
+  --color-gray-500: #86868b;
+  --color-gray-100: rgba(255, 255, 255, 0.1);
+  --color-gray-200: rgba(255, 255, 255, 0.15);
+
+  --pure-border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Glass Layout Elements */
+html.dark .navbar,
+html.dark .tags-view,
+html.dark .sidebar-container,
+html.dark .horizontal-header,
+html.dark .sidebar-logo-container {
+  background: rgba(26, 26, 26, 0.8) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html.dark .app-main,
+html.dark .app-main-nofixed-header {
+  background: var(--bg-page) !important;
+}
+
+/* Tags View Refinement */
+html.dark .tags-view {
+  .scroll-item .chrome-tab:hover .tag-title {
+    color: #fff;
+  }
+}
+
+/* Dialogs & Context Menus as Glass Sheets */
+html.dark .el-dialog,
+html.dark .contextmenu,
+html.dark .el-popper {
+  background: rgba(40, 40, 40, 0.8) !important;
+  backdrop-filter: blur(30px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Custom Scrollbar for Dark Mode */
+html.dark .pure-scrollbar {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.3);
+    }
+  }
+}
+
+/* Alerts and Banners */
+html.dark .el-alert {
+  &--success {
+    background: rgba(40, 205, 65, 0.15);
+    border: 1px solid rgba(40, 205, 65, 0.3);
+  }
+
+  &--warning {
+    background: rgba(255, 149, 0, 0.15);
+    border: 1px solid rgba(255, 149, 0, 0.3);
+  }
+
+  &--error {
+    background: rgba(255, 59, 48, 0.15);
+    border: 1px solid rgba(255, 59, 48, 0.3);
+  }
+}
