@@ -234,6 +234,17 @@ pub struct GatewayDto {
     pub last_seen_at_ms: Option<i64>,
     pub protocol_type: String,
     pub protocol_config: Option<String>,
+    pub last_error: Option<String>,
+}
+
+/// 网关测试响应。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestGatewayResponse {
+    pub success: bool,
+    pub latency_ms: Option<i64>,
+    pub error: Option<String>,
+    pub tested_at_ms: i64,
 }
 
 /// 设备创建请求体。
@@ -272,6 +283,7 @@ pub struct DeviceDto {
     pub last_seen_at_ms: Option<i64>,
     pub room_id: Option<String>,
     pub address_config: Option<String>,
+    pub last_error: Option<String>,
 }
 
 /// 点位创建请求体。
@@ -562,4 +574,55 @@ pub struct PointTestResultDto {
     pub value: Option<String>,
     pub error: Option<String>,
     pub latency_ms: i64,
+}
+// ============================================================================
+// 系统日志 (System Logs) DTO
+// ============================================================================
+
+/// 系统日志查询参数。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemLogQuery {
+    pub from: Option<i64>,
+    pub to: Option<i64>,
+    pub category: Option<String>, // 'operation' | 'error' | 'warning'
+    pub level: Option<String>,    // 'info' | 'warn' | 'error'
+    pub unread_only: Option<bool>,
+    pub limit: Option<i64>,
+}
+
+/// 系统日志返回结构。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemLogDto {
+    pub log_id: String,
+    pub tenant_id: String,
+    pub project_id: Option<String>,
+    pub category: String,
+    pub level: String,
+    pub title: String,
+    pub message: String,
+    pub source: Option<String>,
+    pub resource: Option<String>,
+    pub actor: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+    pub is_read: bool,
+    pub created_at_ms: i64,
+}
+
+/// 未读数量统计。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadStatsDto {
+    pub operation: i64,
+    pub error: i64,
+    pub warning: i64,
+    pub total: i64,
+}
+
+/// 标记已读请求。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkReadRequest {
+    pub log_ids: Vec<String>,
 }

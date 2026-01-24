@@ -1,8 +1,0 @@
-target
-node_modules
-.data
-artifacts
-.git
-.env
-mcp-shell.log
-

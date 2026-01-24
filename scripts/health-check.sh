@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ -z "${EMS_DATABASE_URL:-}" ]; then
-  EMS_DATABASE_URL="postgresql://ems:admin123@localhost:5432/ems"
-  export EMS_DATABASE_URL
-fi
+: "${EMS_DATABASE_URL:?EMS_DATABASE_URL is required}"
+: "${EMS_REDIS_URL:?EMS_REDIS_URL is required}"
 
 echo "postgres: checking..."
 pg_isready -d "$EMS_DATABASE_URL"
 psql "$EMS_DATABASE_URL" -v ON_ERROR_STOP=1 -c "select 1;"
 
 echo "redis: checking..."
-redis_url="${EMS_REDIS_URL:-redis://default:admin123@localhost:6379}"
-redis-cli -u "$redis_url" ping
+redis-cli -u "$EMS_REDIS_URL" ping
 
 mqtt_host="${EMS_MQTT_HOST:-127.0.0.1}"
 mqtt_port="${EMS_MQTT_PORT:-1883}"

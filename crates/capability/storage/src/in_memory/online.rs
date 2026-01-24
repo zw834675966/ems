@@ -15,6 +15,7 @@ struct Entry {
 pub struct InMemoryOnlineStore {
     gateway: RwLock<HashMap<String, Entry>>,
     device: RwLock<HashMap<String, Entry>>,
+    errors: RwLock<HashMap<String, String>>,
 }
 
 impl Default for InMemoryOnlineStore {
@@ -28,8 +29,16 @@ impl InMemoryOnlineStore {
         Self {
             gateway: RwLock::new(HashMap::new()),
             device: RwLock::new(HashMap::new()),
+            errors: RwLock::new(HashMap::new()),
         }
     }
+}
+
+fn error_key(tenant_id: &str, project_id: &str, resource_id: &str) -> String {
+    format!(
+        "tenant:{}:project:{}:resource:{}:error",
+        tenant_id, project_id, resource_id
+    )
 }
 
 fn gateway_key(tenant_id: &str, project_id: &str, gateway_id: &str) -> String {
@@ -157,6 +166,61 @@ impl OnlineStore for InMemoryOnlineStore {
         for device_id in device_ids {
             if let Some(item) = map.get(&device_key(&ctx.tenant_id, project_id, device_id)) {
                 result.insert(device_id.clone(), item.last_seen_at_ms);
+            }
+        }
+        Ok(result)
+    }
+
+    async fn report_resource_error(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_id: &str,
+        error: &str,
+    ) -> Result<(), StorageError> {
+        ensure_project_scope(ctx, project_id)?;
+        let mut map = self
+            .errors
+            .write()
+            .map_err(|_| StorageError::new("lock failed"))?;
+        map.insert(
+            error_key(&ctx.tenant_id, project_id, resource_id),
+            error.to_string(),
+        );
+        Ok(())
+    }
+
+    async fn get_resource_error(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        ensure_project_scope(ctx, project_id)?;
+        let map = self
+            .errors
+            .read()
+            .map_err(|_| StorageError::new("lock failed"))?;
+        Ok(map
+            .get(&error_key(&ctx.tenant_id, project_id, resource_id))
+            .cloned())
+    }
+
+    async fn list_resources_errors(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_ids: &[String],
+    ) -> Result<HashMap<String, String>, StorageError> {
+        ensure_project_scope(ctx, project_id)?;
+        let map = self
+            .errors
+            .read()
+            .map_err(|_| StorageError::new("lock failed"))?;
+        let mut result = HashMap::new();
+        for resource_id in resource_ids {
+            if let Some(error) = map.get(&error_key(&ctx.tenant_id, project_id, resource_id)) {
+                result.insert(resource_id.clone(), error.clone());
             }
         }
         Ok(result)

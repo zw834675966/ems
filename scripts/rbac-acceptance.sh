@@ -2,11 +2,16 @@
 set -euo pipefail
 
 : "${EMS_HTTP_ADDR:=127.0.0.1:18082}"
-: "${EMS_DATABASE_URL:=postgresql://ems:admin123@localhost:5432/ems}"
+: "${EMS_DATABASE_URL:?EMS_DATABASE_URL is required}"
 : "${EMS_JWT_SECRET:=dev}"
 : "${EMS_JWT_ACCESS_TTL_SECONDS:=3600}"
 : "${EMS_JWT_REFRESH_TTL_SECONDS:=7200}"
-: "${EMS_REDIS_URL:=redis://default:admin123@localhost:6379}"
+: "${EMS_REDIS_URL:?EMS_REDIS_URL is required}"
+
+: "${EMS_SEED_ADMIN_PASSWORD:=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')}"
+: "${EMS_RBAC_TEST_USER_PASSWORD:=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')}"
+export EMS_SEED_ADMIN_PASSWORD
+export EMS_RBAC_TEST_USER_PASSWORD
 
 if ! command -v curl >/dev/null 2>&1; then
   echo "curl not found" >&2
@@ -58,7 +63,7 @@ fi
 ADMIN_LOGIN=$(
   curl -sS -X POST "$base_url/login" \
     -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"admin123"}'
+    -d "$(python3 -c 'import json,os; print(json.dumps({\"username\":\"admin\",\"password\":os.environ[\"EMS_SEED_ADMIN_PASSWORD\"]}))')"
 )
 ADMIN_TOKEN=$(
   python3 -c 'import json,sys; data=json.loads(sys.stdin.read()); assert data.get("success") is True, data; print(data["data"]["accessToken"])' \
@@ -87,7 +92,7 @@ USER_JSON=$(
   python3 - <<'PY'
 import uuid, json
 u = f"op-{uuid.uuid4().hex[:8]}"
-print(json.dumps({"username": u, "password": "admin123", "status": "active", "roles": [__import__("os").environ["ROLE_CODE"]]}))
+print(json.dumps({"username": u, "password": __import__("os").environ["EMS_RBAC_TEST_USER_PASSWORD"], "status": "active", "roles": [__import__("os").environ["ROLE_CODE"]]}))
 PY
 )
 
@@ -119,7 +124,7 @@ trap 'cleanup_db; kill "$api_pid" >/dev/null 2>&1 || true' EXIT
 OP_LOGIN=$(
   curl -sS -X POST "$base_url/login" \
     -H "Content-Type: application/json" \
-    -d "$(python3 -c 'import json,sys; print(json.dumps({"username": sys.argv[1], "password": "admin123"}))' "$USERNAME")"
+    -d "$(python3 -c 'import json,os,sys; print(json.dumps({\"username\": sys.argv[1], \"password\": os.environ[\"EMS_RBAC_TEST_USER_PASSWORD\"]}))' "$USERNAME")"
 )
 OP_TOKEN=$(
   python3 -c 'import json,sys; data=json.loads(sys.stdin.read()); assert data.get("success") is True, data; print(data["data"]["accessToken"])' \

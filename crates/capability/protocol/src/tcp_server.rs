@@ -1,47 +1,36 @@
 //! TCP 服务器实现
 //!
-//! 监听 TCP 端口，接收设备上报的数据。
+//! 按 `docs/protocols/TCP.md` 的二进制协议定义：
+//! - `SOF(0xAA55) + VER + FRAME_LEN + DEV_COUNT + DEV_BLOCK... + CRC16(Modbus)`
+//! - `DEV_BLOCK = DEV_ID(u16) + DEV_TYPE(u8) + DEV_LEN(u16) + DEV_PAYLOAD`
+//! - `DEV_PAYLOAD` 采用 TLV：`TAG(u8) + LEN(u8) + VALUE(N)`
 //!
-//! ## 使用示例
-//!
-//! ```rust,ignore
-//! let config = TcpServerConfig {
-//!     listen_port: 9000,
-//!     frame_delimiter: "\n".to_string(),
-//! };
-//! let source = TcpServerSource::new(config);
-//! source.run(handler).await?;
-//! ```
+//! 解析后根据 (dev_id, tag) 映射到内部 `source_id`，并输出 `ProtocolEvent`。
 
 use crate::error::ProtocolError;
 use crate::modbus_tcp::ProtocolEventHandler;
-use crate::types::{now_epoch_ms, ProtocolEvent};
+use crate::types::{now_epoch_ms, Endian, ProtocolEvent, TcpValueType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 /// TCP 服务器配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TcpServerConfig {
     /// 监听端口
+    #[serde(alias = "listen_port")]
     pub listen_port: u16,
-    /// 帧分隔符（如 "\n" 或固定长度）
-    #[serde(default = "default_delimiter")]
-    pub frame_delimiter: String,
     /// 最大连接数
     #[serde(default = "default_max_connections")]
     pub max_connections: usize,
     /// 连接超时（秒）
     #[serde(default = "default_connection_timeout")]
     pub connection_timeout_secs: u64,
-}
-
-fn default_delimiter() -> String {
-    "\n".to_string()
 }
 
 fn default_max_connections() -> usize {
@@ -52,21 +41,24 @@ fn default_connection_timeout() -> u64 {
     300
 }
 
-/// 设备映射信息
+/// TLV 点位映射信息：以 (dev_id, tag) 映射到内部 source_id。
 #[derive(Debug, Clone)]
-pub struct DeviceMapping {
+pub struct TcpPointMapping {
     pub tenant_id: String,
     pub project_id: String,
     pub gateway_id: String,
     pub device_id: String,
     pub source_id: String,
+    pub value_type: TcpValueType,
+    pub endian: Endian,
+    pub scale: Option<f64>,
+    pub offset: Option<f64>,
 }
 
 /// TCP 服务器采集源
 pub struct TcpServerSource {
     config: TcpServerConfig,
-    /// 设备映射表：通过某种标识（如设备 ID 或连接 IP）映射到设备信息
-    device_mappings: Arc<RwLock<HashMap<String, DeviceMapping>>>,
+    point_mappings: Arc<RwLock<HashMap<(u16, u8), TcpPointMapping>>>,
 }
 
 impl TcpServerSource {
@@ -74,7 +66,7 @@ impl TcpServerSource {
     pub fn new(config: TcpServerConfig) -> Self {
         Self {
             config,
-            device_mappings: Arc::new(RwLock::new(HashMap::new())),
+            point_mappings: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -85,10 +77,10 @@ impl TcpServerSource {
         Ok(Self::new(config))
     }
 
-    /// 注册设备映射
-    pub async fn register_device(&self, identifier: String, mapping: DeviceMapping) {
-        let mut mappings = self.device_mappings.write().await;
-        mappings.insert(identifier, mapping);
+    /// 注册 (dev_id, tag) 映射
+    pub async fn register_point_mapping(&self, dev_id: u16, tag: u8, mapping: TcpPointMapping) {
+        let mut mappings = self.point_mappings.write().await;
+        mappings.insert((dev_id, tag), mapping);
     }
 
     /// 运行服务器
@@ -104,8 +96,7 @@ impl TcpServerSource {
                     info!("new connection from {}", peer_addr);
 
                     let handler = Arc::clone(&handler);
-                    let mappings = Arc::clone(&self.device_mappings);
-                    let delimiter = self.config.frame_delimiter.clone();
+                    let mappings = Arc::clone(&self.point_mappings);
 
                     tokio::spawn(async move {
                         if let Err(e) = Self::handle_connection(
@@ -113,7 +104,6 @@ impl TcpServerSource {
                             peer_addr.to_string(),
                             handler,
                             mappings,
-                            delimiter,
                         )
                         .await
                         {
@@ -128,119 +118,265 @@ impl TcpServerSource {
         }
     }
 
-    /// 处理单个连接
     async fn handle_connection(
         stream: TcpStream,
         peer_id: String,
         handler: Arc<dyn ProtocolEventHandler>,
-        mappings: Arc<RwLock<HashMap<String, DeviceMapping>>>,
-        delimiter: String,
+        mappings: Arc<RwLock<HashMap<(u16, u8), TcpPointMapping>>>,
     ) -> Result<(), ProtocolError> {
-        let mut reader = BufReader::new(stream);
-        let mut line = String::new();
+        let mut stream = stream;
+        let mut buf: Vec<u8> = Vec::with_capacity(8 * 1024);
+        let mut tmp = [0u8; 4096];
 
         loop {
-            line.clear();
-
-            let bytes_read = if delimiter == "\n" {
-                reader.read_line(&mut line).await?
-            } else {
-                // 固定长度或其他分隔符处理
-                let mut buf = vec![0u8; 1024];
-                let n = reader.read(&mut buf).await?;
-                if n == 0 {
-                    break;
-                }
-                line = String::from_utf8_lossy(&buf[..n]).to_string();
-                n
-            };
-
-            if bytes_read == 0 {
+            let n = stream.read(&mut tmp).await?;
+            if n == 0 {
                 info!("connection closed by {}", peer_id);
                 break;
             }
+            buf.extend_from_slice(&tmp[..n]);
 
-            let data = line.trim();
-            if data.is_empty() {
-                continue;
-            }
+            loop {
+                let Some(frame) = try_take_frame(&mut buf)? else {
+                    break;
+                };
+                debug!(
+                    peer = %peer_id,
+                    ver = frame.version,
+                    dev_count = frame.dev_blocks.len(),
+                    "tcp frame received"
+                );
 
-            debug!(peer = %peer_id, data = %data, "received tcp data");
+                for dev in frame.dev_blocks {
+                    for tlv in dev.tlvs {
+                        let mapping = {
+                            let map = mappings.read().await;
+                            map.get(&(dev.dev_id, tlv.tag)).cloned()
+                        };
+                        let Some(mapping) = mapping else {
+                            continue;
+                        };
 
-            // 尝试解析数据并查找设备映射
-            // 格式示例：device_id:value 或 JSON 格式
-            if let Some(mapping) = Self::find_mapping(&mappings, &peer_id, data).await {
-                if let Some(value) = Self::parse_value(data) {
-                    let event = ProtocolEvent {
-                        tenant_id: mapping.tenant_id,
-                        project_id: mapping.project_id,
-                        gateway_id: mapping.gateway_id,
-                        device_id: mapping.device_id,
-                        source_id: mapping.source_id,
-                        value,
-                        received_at_ms: now_epoch_ms(),
-                    };
+                        let Some(raw) =
+                            decode_tlv_value(&tlv.value, mapping.value_type, mapping.endian)
+                        else {
+                            continue;
+                        };
 
-                    if let Err(e) = handler.handle(event).await {
-                        warn!(peer = %peer_id, error = %e, "failed to handle event");
+                        let value = match (mapping.scale, mapping.offset) {
+                            (Some(scale), Some(offset)) => raw * scale + offset,
+                            (Some(scale), None) => raw * scale,
+                            (None, Some(offset)) => raw + offset,
+                            (None, None) => raw,
+                        };
+
+                        let event = ProtocolEvent {
+                            tenant_id: mapping.tenant_id,
+                            project_id: mapping.project_id,
+                            gateway_id: mapping.gateway_id,
+                            device_id: mapping.device_id,
+                            source_id: mapping.source_id,
+                            value,
+                            received_at_ms: now_epoch_ms(),
+                        };
+
+                        if let Err(e) = handler.handle(event).await {
+                            warn!(peer = %peer_id, error = %e, "failed to handle event");
+                        }
                     }
                 }
-            } else {
-                debug!(peer = %peer_id, "no mapping found for data");
             }
         }
 
         Ok(())
     }
+}
 
-    /// 查找设备映射
-    async fn find_mapping(
-        mappings: &Arc<RwLock<HashMap<String, DeviceMapping>>>,
-        peer_id: &str,
-        data: &str,
-    ) -> Option<DeviceMapping> {
-        let mappings = mappings.read().await;
+#[derive(Debug)]
+struct TcpFrame {
+    version: u8,
+    dev_blocks: Vec<DevBlock>,
+}
 
-        // 首先尝试通过 peer_id（IP:port）查找
-        if let Some(mapping) = mappings.get(peer_id) {
-            return Some(mapping.clone());
-        }
+#[derive(Debug)]
+struct DevBlock {
+    dev_id: u16,
+    #[allow(dead_code)]
+    dev_type: u8,
+    tlvs: Vec<Tlv>,
+}
 
-        // 尝试从数据中提取设备标识
-        // 格式：device_id:value
-        if let Some(idx) = data.find(':') {
-            let device_id = &data[..idx];
-            if let Some(mapping) = mappings.get(device_id) {
-                return Some(mapping.clone());
+#[derive(Debug)]
+struct Tlv {
+    tag: u8,
+    value: Vec<u8>,
+}
+
+fn decode_tlv_value(value: &[u8], value_type: TcpValueType, endian: Endian) -> Option<f64> {
+    match value_type {
+        TcpValueType::UInt8 => value.first().copied().map(|v| v as f64),
+        TcpValueType::UInt16 => {
+            if value.len() != 2 {
+                return None;
             }
+            let bytes: [u8; 2] = [value[0], value[1]];
+            let v = match endian {
+                Endian::Big => u16::from_be_bytes(bytes),
+                Endian::Little => u16::from_le_bytes(bytes),
+            };
+            Some(v as f64)
         }
+        TcpValueType::UInt32 => {
+            if value.len() != 4 {
+                return None;
+            }
+            let bytes: [u8; 4] = [value[0], value[1], value[2], value[3]];
+            let v = match endian {
+                Endian::Big => u32::from_be_bytes(bytes),
+                Endian::Little => u32::from_le_bytes(bytes),
+            };
+            Some(v as f64)
+        }
+        TcpValueType::Int32 => {
+            if value.len() != 4 {
+                return None;
+            }
+            let bytes: [u8; 4] = [value[0], value[1], value[2], value[3]];
+            let v = match endian {
+                Endian::Big => i32::from_be_bytes(bytes),
+                Endian::Little => i32::from_le_bytes(bytes),
+            };
+            Some(v as f64)
+        }
+    }
+}
 
-        None
+fn try_take_frame(buf: &mut Vec<u8>) -> Result<Option<TcpFrame>, ProtocolError> {
+    const SOF0: u8 = 0xAA;
+    const SOF1: u8 = 0x55;
+
+    let mut sof_pos = None;
+    for i in 0..buf.len().saturating_sub(1) {
+        if buf[i] == SOF0 && buf[i + 1] == SOF1 {
+            sof_pos = Some(i);
+            break;
+        }
+    }
+    let Some(pos) = sof_pos else {
+        if buf.len() > 1 {
+            buf.drain(..buf.len() - 1);
+        }
+        return Ok(None);
+    };
+    if pos > 0 {
+        buf.drain(..pos);
     }
 
-    /// 解析数据值
-    fn parse_value(data: &str) -> Option<f64> {
-        // 格式1：纯数值
-        if let Ok(value) = data.parse::<f64>() {
-            return Some(value);
-        }
-
-        // 格式2：device_id:value
-        if let Some(idx) = data.find(':') {
-            if let Ok(value) = data[idx + 1..].trim().parse::<f64>() {
-                return Some(value);
-            }
-        }
-
-        // 格式3：JSON {"value": 123.45}
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-            if let Some(value) = json.get("value").and_then(|v| v.as_f64()) {
-                return Some(value);
-            }
-        }
-
-        None
+    if buf.len() < 2 + 1 + 2 {
+        return Ok(None);
     }
+    let version = buf[2];
+    let frame_len = u16::from_be_bytes([buf[3], buf[4]]) as usize;
+    if frame_len < 4 {
+        buf.drain(..2);
+        return Ok(None);
+    }
+    let total_len = 2 + frame_len + 2;
+    if buf.len() < total_len {
+        return Ok(None);
+    }
+
+    let payload_start = 2;
+    let payload_end = 2 + frame_len;
+    let payload = &buf[payload_start..payload_end];
+    let crc_bytes = [buf[payload_end], buf[payload_end + 1]];
+    let crc_recv_be = u16::from_be_bytes(crc_bytes);
+    let crc_recv_le = u16::from_le_bytes(crc_bytes);
+    let crc_calc = crc16_modbus(payload);
+    if crc_calc != crc_recv_be && crc_calc != crc_recv_le {
+        warn!(
+            crc_calc = crc_calc,
+            crc_recv_be = crc_recv_be,
+            crc_recv_le = crc_recv_le,
+            "tcp frame crc mismatch"
+        );
+        buf.drain(..1);
+        return Ok(None);
+    }
+
+    if payload.len() < 1 + 2 + 1 {
+        buf.drain(..total_len);
+        return Ok(None);
+    }
+    let dev_count = payload[3] as usize;
+    let mut cursor = 4usize;
+    let mut dev_blocks = Vec::with_capacity(dev_count);
+    for _ in 0..dev_count {
+        if cursor + 2 + 1 + 2 > payload.len() {
+            buf.drain(..total_len);
+            return Err(ProtocolError::DataParse(
+                "tcp dev block truncated".to_string(),
+            ));
+        }
+        let dev_id = u16::from_be_bytes([payload[cursor], payload[cursor + 1]]);
+        cursor += 2;
+        let dev_type = payload[cursor];
+        cursor += 1;
+        let dev_len = u16::from_be_bytes([payload[cursor], payload[cursor + 1]]) as usize;
+        cursor += 2;
+        if cursor + dev_len > payload.len() {
+            buf.drain(..total_len);
+            return Err(ProtocolError::DataParse(
+                "tcp dev payload truncated".to_string(),
+            ));
+        }
+        let dev_payload = &payload[cursor..cursor + dev_len];
+        cursor += dev_len;
+
+        let mut tlvs = Vec::new();
+        let mut p = 0usize;
+        while p + 2 <= dev_payload.len() {
+            let tag = dev_payload[p];
+            let len = dev_payload[p + 1] as usize;
+            p += 2;
+            if p + len > dev_payload.len() {
+                break;
+            }
+            tlvs.push(Tlv {
+                tag,
+                value: dev_payload[p..p + len].to_vec(),
+            });
+            p += len;
+        }
+
+        dev_blocks.push(DevBlock {
+            dev_id,
+            dev_type,
+            tlvs,
+        });
+    }
+
+    buf.drain(..total_len);
+    Ok(Some(TcpFrame {
+        version,
+        dev_blocks,
+    }))
+}
+
+fn crc16_modbus(data: &[u8]) -> u16 {
+    let mut crc: u16 = 0xFFFF;
+    for &b in data {
+        crc ^= b as u16;
+        for _ in 0..8 {
+            if crc & 0x0001 != 0 {
+                crc >>= 1;
+                crc ^= 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    crc
 }
 
 #[cfg(test)]
@@ -249,27 +385,51 @@ mod tests {
 
     #[test]
     fn test_parse_config() {
-        let json = r#"{"listen_port": 9000, "frame_delimiter": "\n"}"#;
+        let json = r#"{"listenPort": 9000}"#;
         let source = TcpServerSource::from_json(json).unwrap();
         assert_eq!(source.config.listen_port, 9000);
-        assert_eq!(source.config.frame_delimiter, "\n");
     }
 
     #[test]
-    fn test_parse_value() {
-        // 纯数值
-        assert_eq!(TcpServerSource::parse_value("123.45"), Some(123.45));
+    fn test_crc16_modbus_known_vector() {
+        // CRC16-Modbus("123456789") == 0x4B37
+        assert_eq!(crc16_modbus(b"123456789"), 0x4B37);
+    }
 
-        // device_id:value 格式
-        assert_eq!(TcpServerSource::parse_value("dev1:99.5"), Some(99.5));
+    #[test]
+    fn test_take_frame_minimal() {
+        // 构造一个只包含 1 个设备、1 个 TLV 的帧：
+        // SOF AA55
+        // VER 01
+        // LEN 000D (payload bytes from VER..before CRC, include VER+LEN+DEV_COUNT+DEV_BLOCK)
+        // DEV_COUNT 01
+        // DEV_ID 0001
+        // DEV_TYPE 01
+        // DEV_LEN 0004
+        // TLV: TAG 01 LEN 02 VALUE 0x0E 0xD6
+        let payload: Vec<u8> = vec![
+            0x01, // VER
+            0x00, 0x0D, // LEN
+            0x01, // DEV_COUNT
+            0x00, 0x01, // DEV_ID
+            0x01, // DEV_TYPE
+            0x00, 0x04, // DEV_LEN
+            0x01, 0x02, 0x0E, 0xD6, // TLV
+        ];
+        let crc = crc16_modbus(&payload);
+        let mut frame = vec![0xAA, 0x55];
+        frame.extend_from_slice(&payload);
+        frame.extend_from_slice(&crc.to_be_bytes());
 
-        // JSON 格式
-        assert_eq!(
-            TcpServerSource::parse_value(r#"{"value": 42.0}"#),
-            Some(42.0)
-        );
-
-        // 无效格式
-        assert_eq!(TcpServerSource::parse_value("invalid"), None);
+        let mut buf = frame.clone();
+        let parsed = try_take_frame(&mut buf).unwrap().unwrap();
+        assert_eq!(parsed.version, 0x01);
+        assert_eq!(parsed.dev_blocks.len(), 1);
+        assert_eq!(parsed.dev_blocks[0].dev_id, 1);
+        assert_eq!(parsed.dev_blocks[0].dev_type, 1);
+        assert_eq!(parsed.dev_blocks[0].tlvs.len(), 1);
+        assert_eq!(parsed.dev_blocks[0].tlvs[0].tag, 1);
+        assert_eq!(parsed.dev_blocks[0].tlvs[0].value, vec![0x0E, 0xD6]);
+        assert!(buf.is_empty());
     }
 }

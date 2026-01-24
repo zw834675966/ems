@@ -14,9 +14,6 @@ use axum::{
 };
 use domain::permissions;
 
-/// 路径参数提取器
-///
-/// 从 URL 路径中提取项目 ID
 #[derive(serde::Deserialize)]
 pub struct ProjectPath {
     project_id: String,

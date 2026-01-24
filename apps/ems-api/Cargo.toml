@@ -13,6 +13,7 @@ dotenvy = { workspace = true }
 ems-auth = { workspace = true }
 ems-config = { workspace = true }
 ems-ingest = { workspace = true }
+ems-protocol = { workspace = true }
 ems-normalize = { workspace = true }
 ems-control = { workspace = true }
 ems-pipeline = { workspace = true }
@@ -27,6 +28,8 @@ tower-http = { workspace = true }
 tracing = { workspace = true }
 domain = { workspace = true }
 uuid = { workspace = true }
+tokio-modbus = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 bytes = "1"

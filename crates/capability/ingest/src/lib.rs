@@ -51,6 +51,14 @@ pub struct MqttSourceConfig {
     pub use_shared_subscription: bool,
     /// 共享订阅组名（默认 ems-ingest）
     pub shared_group: String,
+    /// 是否启用 TLS 加密连接
+    pub use_tls: bool,
+    /// CA 证书路径（用于验证服务器证书）
+    pub ca_cert_path: Option<String>,
+    /// 客户端证书路径（用于 mTLS 双向认证）
+    pub client_cert_path: Option<String>,
+    /// 客户端私钥路径（用于 mTLS 双向认证）
+    pub client_key_path: Option<String>,
 }
 
 /// MQTT 采集源（占位实现）。
@@ -80,6 +88,17 @@ impl Source for MqttSource {
             (self.config.username.as_ref(), self.config.password.as_ref())
         {
             options.set_credentials(username, password);
+        }
+
+        // 配置 TLS 传输层（如果启用）
+        if self.config.use_tls {
+            let tls_config = build_tls_config(
+                self.config.ca_cert_path.as_deref(),
+                self.config.client_cert_path.as_deref(),
+                self.config.client_key_path.as_deref(),
+            )
+            .map_err(|err| IngestError::Source(format!("TLS config error: {}", err)))?;
+            options.set_transport(rumqttc::Transport::tls_with_config(tls_config));
         }
 
         let (client, mut eventloop) = rumqttc::AsyncClient::new(options, 10);
@@ -172,4 +191,95 @@ fn now_epoch_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     duration.as_millis() as i64
+}
+
+/// 构建 TLS 配置
+///
+/// 根据提供的证书路径构建 rumqttc 的 TLS 配置：
+/// - ca_cert_path: CA 证书路径（用于验证服务器证书）
+/// - client_cert_path + client_key_path: 客户端证书和私钥（用于 mTLS）
+fn build_tls_config(
+    ca_cert_path: Option<&str>,
+    client_cert_path: Option<&str>,
+    client_key_path: Option<&str>,
+) -> Result<rumqttc::TlsConfiguration, String> {
+    use std::io::BufReader;
+
+    // 读取 CA 证书（如果提供）
+    let ca_certs = if let Some(ca_path) = ca_cert_path {
+        let ca_file = std::fs::File::open(ca_path)
+            .map_err(|e| format!("failed to open CA cert '{}': {}", ca_path, e))?;
+        let mut reader = BufReader::new(ca_file);
+        rustls_pemfile::certs(&mut reader)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("failed to parse CA cert: {}", e))?
+    } else {
+        Vec::new()
+    };
+
+    // 读取客户端证书和私钥（如果提供 mTLS）
+    let client_auth = match (client_cert_path, client_key_path) {
+        (Some(cert_path), Some(key_path)) => {
+            let cert_file = std::fs::File::open(cert_path)
+                .map_err(|e| format!("failed to open client cert '{}': {}", cert_path, e))?;
+            let mut cert_reader = BufReader::new(cert_file);
+            let client_certs = rustls_pemfile::certs(&mut cert_reader)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("failed to parse client cert: {}", e))?;
+
+            let key_file = std::fs::File::open(key_path)
+                .map_err(|e| format!("failed to open client key '{}': {}", key_path, e))?;
+            let mut key_reader = BufReader::new(key_file);
+            let client_key = rustls_pemfile::private_key(&mut key_reader)
+                .map_err(|e| format!("failed to parse client key: {}", e))?
+                .ok_or_else(|| "no private key found in file".to_string())?;
+
+            Some((client_certs, client_key))
+        }
+        _ => None,
+    };
+
+    Ok(rumqttc::TlsConfiguration::Rustls(std::sync::Arc::new(
+        build_rustls_client_config(ca_certs, client_auth)?,
+    )))
+}
+
+/// 构建 rustls ClientConfig
+fn build_rustls_client_config(
+    ca_certs: Vec<rustls_pki_types::CertificateDer<'static>>,
+    client_auth: Option<(
+        Vec<rustls_pki_types::CertificateDer<'static>>,
+        rustls_pki_types::PrivateKeyDer<'static>,
+    )>,
+) -> Result<rustls::ClientConfig, String> {
+    let mut root_store = rustls::RootCertStore::empty();
+
+    // 添加自定义 CA 证书
+    for cert in ca_certs {
+        root_store
+            .add(cert)
+            .map_err(|e| format!("failed to add CA cert: {}", e))?;
+    }
+
+    // 如果没有自定义 CA，使用系统根证书
+    if root_store.is_empty() {
+        let native_certs = rustls_native_certs::load_native_certs()
+            .map_err(|e| format!("could not load platform certs: {}", e))?;
+        for cert in native_certs {
+            root_store.add(cert).ok();
+        }
+    }
+
+    let builder = rustls::ClientConfig::builder().with_root_certificates(root_store);
+
+    // 配置客户端认证（mTLS）
+    let config = if let Some((certs, key)) = client_auth {
+        builder
+            .with_client_auth_cert(certs, key)
+            .map_err(|e| format!("failed to configure client auth: {}", e))?
+    } else {
+        builder.with_no_client_auth()
+    };
+
+    Ok(config)
 }

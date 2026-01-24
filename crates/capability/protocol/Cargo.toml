@@ -14,10 +14,11 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 
 # Modbus TCP 协议支持
-tokio-modbus = { version = "0.17", default-features = false, features = ["tcp"] }
+tokio-modbus = { version = "0.17", default-features = false, features = ["tcp", "tcp-server"] }
 
 # 内部依赖
 domain = { path = "../../core/domain" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+async-trait = { workspace = true }

@@ -56,6 +56,7 @@ pub fn require_any_permission(ctx: &TenantContext, permissions: &[&str]) -> Resu
 }
 
 /// 请求上下文中间件：注入 request_id/trace_id
+#[allow(dead_code)]
 pub async fn request_context(mut req: Request<Body>, next: Next) -> Response {
     let ids = new_request_ids();
     let method = req.method().clone();
@@ -129,5 +130,109 @@ pub async fn require_project_scope(
         }
         Ok(false) => Err(forbidden_error()),
         Err(err) => Err(storage_error(err)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ems_auth::{AuthService, JwtManager};
+    use ems_control::{CommandService, NoopDispatcher};
+    use std::sync::Arc;
+
+    fn build_state() -> AppState {
+        let user_store: Arc<ems_storage::InMemoryUserStore> =
+            Arc::new(ems_storage::InMemoryUserStore::with_default_admin());
+        let jwt = JwtManager::new("test-secret".to_string(), 3600, 7200);
+        let auth: Arc<AuthService> = Arc::new(AuthService::new(user_store.clone(), jwt));
+        let rbac_store: Arc<dyn ems_storage::RbacStore> = user_store.clone();
+
+        let project_store: Arc<dyn ems_storage::ProjectStore> =
+            Arc::new(ems_storage::InMemoryProjectStore::with_default_project());
+        let gateway_store: Arc<dyn ems_storage::GatewayStore> =
+            Arc::new(ems_storage::InMemoryGatewayStore::new());
+        let device_store: Arc<dyn ems_storage::DeviceStore> =
+            Arc::new(ems_storage::InMemoryDeviceStore::new());
+        let point_store: Arc<dyn ems_storage::PointStore> =
+            Arc::new(ems_storage::InMemoryPointStore::new());
+        let point_mapping_store: Arc<dyn ems_storage::PointMappingStore> =
+            Arc::new(ems_storage::InMemoryPointMappingStore::new());
+        let measurement_store: Arc<dyn ems_storage::MeasurementStore> =
+            Arc::new(ems_storage::InMemoryMeasurementStore::new());
+        let realtime_store: Arc<dyn ems_storage::RealtimeStore> =
+            Arc::new(ems_storage::InMemoryRealtimeStore::new());
+        let online_store: Arc<dyn ems_storage::OnlineStore> =
+            Arc::new(ems_storage::InMemoryOnlineStore::new());
+        let command_store: Arc<dyn ems_storage::CommandStore> =
+            Arc::new(ems_storage::InMemoryCommandStore::new());
+        let command_receipt_store: Arc<dyn ems_storage::CommandReceiptStore> =
+            Arc::new(ems_storage::InMemoryCommandReceiptStore::new());
+        let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
+            Arc::new(ems_storage::InMemoryAuditLogStore::new());
+        let command_service = Arc::new(CommandService::new(
+            command_store.clone(),
+            audit_log_store.clone(),
+            Arc::new(NoopDispatcher),
+        ));
+        let collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore> =
+            Arc::new(ems_storage::InMemoryCollectionStrategyStore::new());
+        let system_log_store: Arc<dyn ems_storage::SystemLogStore> =
+            Arc::new(ems_storage::InMemorySystemLogStore::default());
+
+        AppState::new(
+            auth,
+            None,
+            rbac_store,
+            project_store,
+            gateway_store,
+            device_store,
+            point_store,
+            point_mapping_store,
+            measurement_store,
+            realtime_store,
+            online_store,
+            command_store,
+            command_receipt_store,
+            audit_log_store,
+            command_service,
+            collection_strategy_store,
+            system_log_store,
+        )
+    }
+
+    #[test]
+    fn require_tenant_context_rejects_missing_token() {
+        unsafe { std::env::set_var("EMS_JWT_SECRET", "test-secret") };
+        let state = build_state();
+        let headers = HeaderMap::new();
+        let response = require_tenant_context(&state, &headers).unwrap_err();
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn require_project_scope_sets_scope() {
+        unsafe { std::env::set_var("EMS_JWT_SECRET", "test-secret") };
+        let state = build_state();
+        let ctx = TenantContext::new(
+            "tenant-1",
+            "user-1",
+            Vec::new(),
+            Vec::new(),
+            None,
+        );
+        let jwt = JwtManager::new("test-secret".to_string(), 3600, 7200);
+        let tokens = jwt.issue_tokens(&ctx).expect("tokens");
+
+        let mut headers = HeaderMap::new();
+        let header_value = format!("Bearer {}", tokens.access_token);
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_str(&header_value).expect("header"),
+        );
+
+        let ctx = require_project_scope(&state, &headers, "project-1")
+            .await
+            .expect("context");
+        assert_eq!(ctx.project_scope.as_deref(), Some("project-1"));
     }
 }

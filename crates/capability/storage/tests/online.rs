@@ -63,5 +63,5 @@ async fn online_list_batch() {
         .await
         .expect("list gateways");
     assert_eq!(gateways.get("gateway-1").copied(), Some(1000));
-    assert!(gateways.get("gateway-3").is_none());
+    assert!(!gateways.contains_key("gateway-3"));
 }

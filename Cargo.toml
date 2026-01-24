@@ -67,7 +67,10 @@ async-trait = "0.1"
 #   - macros：#[tokio::main]、#[tokio::test] 等宏
 #   - rt-multi-thread：多线程运行时调度器
 #   - process：启动子进程（用于启动前端 pnpm dev）
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "process"] }
+tokio = { version = "1", features = ["full"] }
+tokio-modbus = "0.14"
+tokio-test = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 # ============================================
 # Web 框架
@@ -99,6 +102,7 @@ serde = { version = "1", features = ["derive"] }
 # serde_json：JSON 序列化/反序列化实现
 # 用途：HTTP 请求/响应体、Redis 数据存储
 serde_json = "1"
+mockall = "0.13"
 
 # ============================================
 # 认证与安全
@@ -129,15 +133,22 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 #   - default-features = false：仅启用需要的功能，减小二进制体积
 # 用途：PostgreSQL 连接池管理、类型安全的查询
 sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls"] }
+sqlx-cli = "0.8"
 
 # redis：Redis 客户端库
 # 特性：tokio-comp：Tokio 异步运行时兼容
 # 用途：实时数据缓存（last_value 存储）、SCAN 查询
-redis = { version = "0.25", features = ["tokio-comp"] }
+redis = { version = "0.26", features = ["tokio-comp"] }
 
 # rumqttc：MQTT 客户端库
 # 用途：MQTT 采集源接入（订阅与消息处理）
-rumqttc = "0.24"
+rumqttc = { version = "0.24", features = ["use-rustls"] }
+
+# TLS 依赖（用于 MQTT TLS 连接）
+rustls = "0.22"
+rustls-pemfile = "2"
+rustls-pki-types = "1"
+rustls-native-certs = "0.7"
 
 # ============================================
 # 错误处理
@@ -160,7 +171,7 @@ tracing = "0.1"
 #   - env-filter：环境变量控制日志级别（RUST_LOG）
 #   - fmt：格式化日志输出
 # 用途：初始化日志系统、配置日志级别
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 
 # ============================================
 # 工具库
@@ -189,6 +200,7 @@ ems-control = { path = "crates/capability/control" }
 ems-pipeline = { path = "crates/capability/pipeline" }
 ems-storage = { path = "crates/capability/storage" }
 ems-telemetry = { path = "crates/capability/telemetry" }
+ems-protocol = { path = "crates/capability/protocol" }
 
 # ============================================
 # 编译配置

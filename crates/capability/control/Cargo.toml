@@ -17,3 +17,7 @@ rumqttc = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 ems-telemetry = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+rustls-pki-types = { workspace = true }
+rustls-native-certs = { workspace = true }

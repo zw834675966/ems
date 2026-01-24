@@ -53,7 +53,7 @@ src/
 
 **可选环境变量**：
 - `EMS_HTTP_ADDR`：HTTP 监听地址，默认 `127.0.0.1:8080`
-- `EMS_REDIS_URL`：Redis 连接串（用于实时数据缓存），默认 `redis://default:admin123@localhost:6379`
+- `EMS_REDIS_URL`：Redis 连接串（用于实时数据缓存；生产环境建议明确配置，不提供弱口令默认值）
 - `EMS_REDIS_LAST_VALUE_TTL_SECONDS`：last_value 过期秒数（可选，未设置或为 0 则不设置 TTL）
 - `EMS_REDIS_ONLINE_TTL_SECONDS`：online 过期秒数（默认 60 秒）
 - `EMS_MQTT_HOST`：MQTT Broker 主机，默认 `127.0.0.1`
@@ -76,7 +76,8 @@ src/
 - `EMS_REQUIRE_TIMESCALE`：是否强依赖 timescaledb（`off`/`on`/`true`/`1`），默认 `off`
 
 ```bash
-export EMS_DATABASE_URL="postgresql://ems:admin123@localhost:5432/ems"
+export EMS_DATABASE_URL="postgresql://ems:<PASSWORD>@localhost:5432/ems"
+export EMS_REDIS_URL="redis://localhost:6379"
 export EMS_JWT_SECRET="your-secret"
 export EMS_JWT_ACCESS_TTL_SECONDS="3600"
 export EMS_JWT_REFRESH_TTL_SECONDS="2592000"
@@ -155,24 +156,22 @@ export EMS_INGEST="on"
 export EMS_MQTT_HOST="127.0.0.1"
 export EMS_MQTT_PORT="1883"
 export EMS_MQTT_USERNAME="ems"
-export EMS_MQTT_PASSWORD="admin123"
+export EMS_MQTT_PASSWORD="<PASSWORD>"
 export EMS_MQTT_TOPIC_PREFIX="ems"
 
 cargo run -p ems-api
 ```
 
-## 默认账号（数据库 seed）
-仅用于 M0 演示，需先执行 seed 脚本：
-- 用户名：`admin`
-- 密码：`admin123`
-初始化命令：
+## 初始账号（数据库 seed）
+初始化脚本会为 `tenant-1/admin` 以及 `tenant-2/admin2` 写入随机口令（或使用你提供的环境变量），并在输出中提示你保存：
 ```bash
+export EMS_SEED_ADMIN_PASSWORD="<SET_A_STRONG_PASSWORD_OR_LEAVE_UNSET_TO_GENERATE>"
+export EMS_SEED_ADMIN2_PASSWORD="<SET_A_STRONG_PASSWORD_OR_LEAVE_UNSET_TO_GENERATE>"
 scripts/db-init.sh
 ```
 
-## 依赖默认账号（本地）
-- Redis：`default` / `admin123`
-- MQTT（Mosquitto）：`ems` / `admin123`
+## 依赖配置（本地）
+- Redis / MQTT 是否需要账号密码取决于你的本地服务配置（请避免弱口令）。
 
 ## 接口说明
 
@@ -285,7 +284,7 @@ scripts/db-init.sh
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"<PASSWORD_FROM_DB_INIT>"}'
 ```
 
 预期响应：
@@ -322,7 +321,7 @@ curl -sS -X POST http://127.0.0.1:8080/refresh-token \
 ```bash
 TOKEN_JSON=$(curl -sS -X POST http://127.0.0.1:8080/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}')
+  -d '{"username":"admin","password":"<PASSWORD_FROM_DB_INIT>"}')
 
 ACCESS_TOKEN=$(python3 -c 'import json,sys; obj=json.load(sys.stdin); print(obj.get("data",{}).get("accessToken",""))' <<<"$TOKEN_JSON")
 

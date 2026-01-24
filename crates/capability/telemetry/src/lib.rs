@@ -125,10 +125,16 @@ pub fn metrics() -> &'static TelemetryMetrics {
     METRICS.get_or_init(TelemetryMetrics::new)
 }
 
-/// 初始化 tracing（默认 info）。
-pub fn init_tracing() {
+/// 初始化 tracing（支持根据参数切换文本/JSON 格式）。
+///
+/// - is_json: true 则输出 JSON 格式（生产环境推荐），false 则输出人类可读格式。
+pub fn init_tracing(is_json: bool) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let _ = fmt().with_env_filter(filter).try_init();
+    if is_json {
+        let _ = fmt().json().with_env_filter(filter).try_init();
+    } else {
+        let _ = fmt().with_env_filter(filter).try_init();
+    }
 }
 
 /// 生成新的 request_id 与 trace_id。

@@ -290,7 +290,7 @@ impl CollectionStrategyStore for InMemoryCollectionStrategyStore {
         strategy_id: &str,
         last_value: Option<String>,
         last_error: Option<String>,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<(), StorageError> {
         let mut strategies = self
             .strategies
             .write()
@@ -301,8 +301,7 @@ impl CollectionStrategyStore for InMemoryCollectionStrategyStore {
         {
             record.last_value = last_value;
             record.last_error = last_error;
-            return Ok(true);
         }
-        Ok(false)
+        Ok(())
     }
 }

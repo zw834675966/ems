@@ -13,6 +13,7 @@ pub mod points;
 pub mod projects;
 pub mod rbac;
 pub mod realtime;
+pub mod system_logs;
 
 pub use audit::*;
 pub use auth::*;
@@ -27,3 +28,4 @@ pub use points::*;
 pub use projects::*;
 pub use rbac::*;
 pub use realtime::*;
+pub use system_logs::*;

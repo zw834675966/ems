@@ -331,6 +331,18 @@ pub trait GatewayStore: Send + Sync {
         project_id: &str,
     ) -> Result<Vec<GatewayRecord>, StorageError>;
 
+    /// 按协议类型列出网关（用于后台采集任务扫描）。
+    ///
+    /// 语义：
+    /// - 若 `ctx.tenant_id` 非空：仅返回该租户下的网关。
+    /// - 若 `ctx.project_scope` 为 Some：进一步限制到该项目。
+    /// - 若 `ctx.tenant_id` 为空：返回所有租户下满足条件的网关（仅供系统级后台任务使用）。
+    async fn list_gateways_by_protocol_type(
+        &self,
+        ctx: &TenantContext,
+        protocol_type: &str,
+    ) -> Result<Vec<GatewayRecord>, StorageError>;
+
     /// 查找指定网关
     async fn find_gateway(
         &self,
@@ -799,5 +811,58 @@ pub trait CollectionStrategyStore: Send + Sync {
         strategy_id: &str,
         last_value: Option<String>,
         last_error: Option<String>,
-    ) -> Result<bool, StorageError>;
+    ) -> Result<(), StorageError>;
 }
+
+// ============================================================================
+// 系统日志存储接口（用于前端消息通知）
+// ============================================================================
+
+/// 系统日志存储接口
+///
+/// 提供系统日志的 CRUD 操作，支持按分类查询、未读统计、标记已读等功能。
+#[async_trait]
+pub trait SystemLogStore: Send + Sync {
+    /// 创建系统日志
+    async fn create_system_log(
+        &self,
+        ctx: &TenantContext,
+        record: crate::models::SystemLogRecord,
+    ) -> Result<crate::models::SystemLogRecord, StorageError>;
+
+    /// 查询系统日志列表
+    ///
+    /// 支持按分类、级别、已读状态过滤，支持时间范围和分页。
+    async fn list_system_logs(
+        &self,
+        ctx: &TenantContext,
+        query: crate::models::SystemLogQuery,
+    ) -> Result<Vec<crate::models::SystemLogRecord>, StorageError>;
+
+    /// 获取未读日志统计
+    ///
+    /// 返回各分类的未读数量统计。
+    async fn get_unread_count(
+        &self,
+        ctx: &TenantContext,
+        category: Option<crate::models::LogCategory>,
+    ) -> Result<crate::models::UnreadStats, StorageError>;
+
+    /// 标记日志为已读
+    ///
+    /// 批量标记多条日志为已读，返回成功标记的数量。
+    async fn mark_as_read(
+        &self,
+        ctx: &TenantContext,
+        log_ids: Vec<String>,
+    ) -> Result<usize, StorageError>;
+
+    /// 清理旧日志
+    ///
+    /// 删除指定时间之前的日志，返回删除的数量。
+    async fn cleanup_old_logs(&self, older_than_ms: i64) -> Result<usize, StorageError>;
+}
+
+// ============================================================================
+// WAL (Write-Ahead Log) 存储接口（用于数据采集容灾）
+// ============================================================================

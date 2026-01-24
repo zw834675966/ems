@@ -112,6 +112,9 @@ mod routes;
 /// 工具函数模块
 /// 包含通用的辅助函数和工具类
 mod utils;
+mod app_state;
+
+pub(crate) use app_state::AppState;
 
 // ============================================================================
 // 外部依赖导入
@@ -149,6 +152,7 @@ use ems_storage::{
     PgPointMappingStore,   // 测点映射存储（外部标识 → 内部 ID）
     PgPointStore,          // 测点定义存储
     PgProjectStore,        // 项目信息存储
+    PgSystemLogStore,      // 系统日志存储
     PgUserStore,           // 用户信息存储
     // Redis 存储实现
     RedisOnlineStore,   // 设备在线状态缓存
@@ -159,6 +163,7 @@ use ems_storage::{
 
 // 遥测模块 —— 日志和追踪系统初始化
 use ems_telemetry::init_tracing;
+
 
 // 标准库
 use std::sync::Arc; // 原子引用计数（线程安全的共享所有权）
@@ -229,6 +234,31 @@ fn spawn_web_admin() -> Result<tokio::process::Child, std::io::Error> {
         .spawn()
 }
 
+fn local_services_script_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("scripts/start-local-services.sh")
+}
+
+async fn run_local_services_script() -> Result<(), std::io::Error> {
+    let script = local_services_script_path();
+    if !script.exists() {
+        info!("本地服务脚本未找到（{}），跳过自动启动", script.display());
+        return Ok(());
+    }
+
+    let status = Command::new("bash").arg(script).status().await?;
+    if status.success() {
+        info!("本地服务自动启动脚本执行完成");
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "脚本以非零状态退出：{}",
+            status
+        )))
+    }
+}
+
 // ============================================================================
 // 应用状态定义
 // ============================================================================
@@ -268,120 +298,6 @@ fn spawn_web_admin() -> Result<tokio::process::Child, std::io::Error> {
 /// │                                                                     │
 /// └─────────────────────────────────────────────────────────────────────┘
 /// ```
-#[derive(Clone)]
-struct AppState {
-    // ========================================================================
-    // 认证与权限模块
-    // ========================================================================
-    /// 认证服务
-    ///
-    /// 提供用户登录、JWT 令牌生成/验证、密码校验等认证功能。
-    /// 内部封装了 `UserStore` 和 `JwtManager`。
-    auth: Arc<AuthService>,
-
-    /// 数据库连接池（可选）
-    ///
-    /// PostgreSQL 连接池，用于需要直接执行 SQL 查询的场景。
-    /// 在测试环境中可能为 `None`（使用内存存储时）。
-    db_pool: Option<sqlx::PgPool>,
-
-    /// RBAC 权限存储
-    ///
-    /// 基于角色的访问控制存储，用于查询用户角色、权限等信息。
-    /// 通常与 `PgUserStore` 共享实现。
-    rbac_store: Arc<dyn ems_storage::RbacStore>,
-
-    // ========================================================================
-    // 资产管理模块
-    // ========================================================================
-    /// 项目存储
-    ///
-    /// 管理 EMS 项目的 CRUD 操作。
-    /// 项目是资产层级的顶层，包含多个网关和设备。
-    project_store: Arc<dyn ems_storage::ProjectStore>,
-
-    /// 网关存储
-    ///
-    /// 管理网关设备的 CRUD 操作。
-    /// 网关是连接边缘设备与云平台的桥梁，负责数据采集和指令下发。
-    gateway_store: Arc<dyn ems_storage::GatewayStore>,
-
-    /// 设备存储
-    ///
-    /// 管理物理设备的 CRUD 操作。
-    /// 设备挂载在网关下，包含多个测点。
-    device_store: Arc<dyn ems_storage::DeviceStore>,
-
-    /// 测点存储
-    ///
-    /// 管理测点定义的 CRUD 操作。
-    /// 测点是数据采集的最小单元，代表一个传感器或控制点。
-    point_store: Arc<dyn ems_storage::PointStore>,
-
-    /// 测点映射存储
-    ///
-    /// 管理外部标识到内部测点 ID 的映射关系。
-    /// 用于数据上报时根据网关上报的标识查找对应的测点。
-    point_mapping_store: Arc<dyn ems_storage::PointMappingStore>,
-
-    // ========================================================================
-    // 数据采集模块
-    // ========================================================================
-    /// 历史测量数据存储
-    ///
-    /// 存储测点的历史时序数据，支持时间范围查询、聚合计算等。
-    /// 后端使用 PostgreSQL + TimescaleDB 扩展实现高效的时序存储。
-    measurement_store: Arc<dyn ems_storage::MeasurementStore>,
-
-    /// 实时数据存储
-    ///
-    /// 存储测点的最新值（Last Value），用于实时监控场景。
-    /// 后端使用 Redis 实现快速读写，数据带有 TTL 自动过期。
-    realtime_store: Arc<dyn ems_storage::RealtimeStore>,
-
-    /// 在线状态存储
-    ///
-    /// 存储设备/网关的在线状态，用于判断设备是否在线。
-    /// 后端使用 Redis 实现，设备需周期性发送心跳刷新状态。
-    online_store: Arc<dyn ems_storage::OnlineStore>,
-
-    // ========================================================================
-    // 设备控制模块
-    // ========================================================================
-    /// 控制指令存储
-    ///
-    /// 存储下发的控制指令记录，包括指令内容、状态、时间戳等。
-    /// 支持指令查询、状态更新、历史追溯。
-    command_store: Arc<dyn ems_storage::CommandStore>,
-
-    /// 控制指令回执存储
-    ///
-    /// 存储设备返回的指令执行回执，用于确认指令是否成功执行。
-    /// 注：当前代码中允许未使用（`#[allow(dead_code)]`）。
-    #[allow(dead_code)]
-    command_receipt_store: Arc<dyn ems_storage::CommandReceiptStore>,
-
-    /// 审计日志存储
-    ///
-    /// 存储用户操作的审计日志，包括登录、控制操作等。
-    /// 用于安全审计和操作追溯。
-    audit_log_store: Arc<dyn ems_storage::AuditLogStore>,
-
-    /// 控制指令服务
-    ///
-    /// 封装控制指令的完整业务逻辑：
-    /// - 创建控制指令记录
-    /// - 通过 MQTT 分发器发送指令
-    /// - 处理重试逻辑和超时
-    /// - 记录审计日志
-    command_service: Arc<CommandService>,
-
-    /// 采集策略存储
-    ///
-    /// 管理点位的采集策略配置，包括采集频率、上报方式等。
-    collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore>,
-}
-
 /// 主函数：EMS API 服务的入口点
 ///
 /// 执行以下步骤初始化并启动服务：
@@ -398,6 +314,21 @@ struct AppState {
 /// 10. 绑定 TCP 监听器并启动 HTTP 服务器
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // CLI 子命令（不依赖任何环境变量）：
+    // - `ems-api hash-password <password>`：输出 Argon2id 哈希，用于部署/初始化脚本。
+    let mut args = std::env::args().skip(1);
+    if let Some(cmd) = args.next() {
+        if cmd == "hash-password" {
+            let password = args
+                .next()
+                .ok_or("usage: ems-api hash-password <password>")?;
+            let hash = ems_auth::hash_password(&password)
+                .map_err(|e| format!("hash-password failed: {}", e))?;
+            println!("{}", hash);
+            return Ok(());
+        }
+    }
+
     // 1. 加载 .env 文件中的环境变量（忽略错误）
     dotenvy::dotenv().ok();
 
@@ -405,7 +336,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig::from_env()?;
 
     // 3. 初始化 tracing 日志系统
-    init_tracing();
+    init_tracing(config.log_format == "json");
+
+    if let Err(err) = run_local_services_script().await {
+        warn!("本地服务自动启动脚本执行失败：{}", err);
+    }
 
     // 4. 处理 Web Admin 启动逻辑
     let web_admin_mode = WebAdminMode::from_env();
@@ -518,6 +453,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore> =
         Arc::new(ems_storage::PgCollectionStrategyStore::new(pool.clone()));
 
+    // 系统日志存储
+    let system_log_store: Arc<dyn ems_storage::SystemLogStore> =
+        Arc::new(PgSystemLogStore::new(pool.clone()));
+
     // ========================================================================
     // 8. 初始化设备控制服务（MQTT 分发器）
     // ========================================================================
@@ -538,6 +477,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             command_topic_prefix: config.mqtt_command_topic_prefix.clone(), // 指令主题前缀
             include_target_in_topic: config.mqtt_command_topic_include_target, // 是否在主题中包含目标
             qos: config.mqtt_command_qos,                                      // 消息服务质量等级
+            use_tls: config.mqtt_use_tls,
+            ca_cert_path: config.mqtt_ca_cert_path.clone(),
+            client_cert_path: config.mqtt_client_cert_path.clone(),
+            client_key_path: config.mqtt_client_key_path.clone(),
+        })
+        .map_err(|e| {
+            tracing::error!(
+                error = %e,
+                "failed to initialize MQTT dispatcher (check MQTT TLS settings and OS CA certificates)"
+            );
+            e
         })?;
         (Arc::new(mqtt_dispatcher), Some(handle))
     } else {
@@ -568,6 +518,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 password: config.mqtt_password.clone(),
                 receipt_topic_prefix: config.mqtt_receipt_topic_prefix.clone(), // 回执主题前缀
                 qos: config.mqtt_receipt_qos,
+                use_tls: config.mqtt_use_tls,
+                ca_cert_path: config.mqtt_ca_cert_path.clone(),
+                client_cert_path: config.mqtt_client_cert_path.clone(),
+                client_key_path: config.mqtt_client_key_path.clone(),
             },
             command_store.clone(),
             command_receipt_store.clone(),
@@ -592,6 +546,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let _ingest_handle = ingest::spawn_ingest(
         &config,
+        gateway_store.clone(),
         point_mapping_store.clone(),
         point_store.clone(),
         device_store.clone(),
@@ -609,9 +564,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 将所有服务和存储层实例打包到 AppState 中，
     // 通过 Axum 的 `with_state()` 方法注入到路由器，
     // 使得每个请求处理器都可以访问这些共享资源。
-    let state = AppState {
+    let state = AppState::new(
         auth,
-        db_pool: Some(pool.clone()),
+        Some(pool.clone()),
         rbac_store,
         project_store,
         gateway_store,
@@ -626,7 +581,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         audit_log_store,
         command_service,
         collection_strategy_store,
-    };
+        system_log_store,
+    );
 
     // ========================================================================
     // 11. 构建 Axum 路由器
@@ -646,16 +602,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(axum_middleware::from_fn(middleware::request_context)); // 添加请求追踪中间件
 
     // ========================================================================
-    // 12. 绑定 TCP 监听器并启动 HTTP 服务器
+    // 12. 绑定 TCP 监听器并启动 HTTP 服务器（支持优雅停机）
     // ========================================================================
     //
     // 使用 Tokio 的异步 TCP 监听器绑定配置的地址，
     // 然后使用 Axum 的 `serve` 函数启动 HTTP 服务器。
-    // 服务器会一直运行直到进程被终止。
+    // 通过 `with_graceful_shutdown` 监听 SIGTERM/SIGINT 信号，
+    // 确保服务在接收到终止信号后能够：
+    // 1. 停止接受新连接
+    // 2. 等待现有请求处理完成
+    // 3. 优雅地关闭服务
     let listener = tokio::net::TcpListener::bind(&config.http_addr).await?;
     info!("🚀 EMS API 服务已启动，监听地址: {}", config.http_addr);
-    axum::serve(listener, app).await?;
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    info!("👋 EMS API 服务已优雅停止");
     Ok(())
+}
+
+/// 监听系统终止信号（SIGTERM/SIGINT）
+///
+/// 当 Kubernetes、Docker 或用户发送终止信号时，此函数返回，
+/// 触发 Axum 服务器的优雅停机流程。
+async fn shutdown_signal() {
+    use tokio::signal;
+
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            info!("收到 SIGINT (Ctrl+C)，开始优雅停机...");
+        }
+        _ = terminate => {
+            info!("收到 SIGTERM，开始优雅停机...");
+        }
+    }
 }
 
 // ============================================================================
@@ -735,12 +734,16 @@ mod tests {
             Arc::new(ems_storage::InMemoryAuditLogStore::new());
 
         // 使用空操作分发器（测试环境不发送实际 MQTT 消息）
-        let dispatcher = Arc::new(ems_control::NoopDispatcher::default());
+        let dispatcher = Arc::new(ems_control::NoopDispatcher);
         let command_service = Arc::new(ems_control::CommandService::new(
             command_store.clone(),
             audit_log_store.clone(),
             dispatcher,
         ));
+
+        // 系统日志存储（内存实现）
+        let system_log_store: Arc<dyn ems_storage::SystemLogStore> =
+            Arc::new(ems_storage::InMemorySystemLogStore::new());
 
         // 组装并返回 AppState
         AppState {
@@ -760,6 +763,7 @@ mod tests {
             audit_log_store,
             command_service,
             collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
+            system_log_store,
         }
     }
 

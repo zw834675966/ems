@@ -15,11 +15,11 @@ VALUES ('project-2', 'tenant-2', 'Second Project', 'UTC')
 ON CONFLICT (project_id) DO NOTHING;
 
 INSERT INTO users (user_id, tenant_id, username, password_hash)
-VALUES ('user-1', 'tenant-1', 'admin', '$argon2id$v=19$m=19456,t=2,p=1$r0SOLlbv1nf316kaG+SVUw$HGSYjmbJRBaQpKbr5uAaEltov+WNAfJYDP8jFztVgMI')
+VALUES ('user-1', 'tenant-1', 'admin', :'EMS_SEED_ADMIN_PASSWORD_HASH')
 ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO users (user_id, tenant_id, username, password_hash)
-VALUES ('user-2', 'tenant-2', 'admin2', '$argon2id$v=19$m=19456,t=2,p=1$NM4IMvIYxqW1ciuU0JeNLQ$go4bDDbJspAjBFFU6borkL+Oo1DACVwKC8yuiIGbgoY')
+VALUES ('user-2', 'tenant-2', 'admin2', :'EMS_SEED_ADMIN2_PASSWORD_HASH')
 ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO roles (role_code, name)
@@ -27,26 +27,26 @@ VALUES ('admin', 'Administrator')
 ON CONFLICT (role_code) DO NOTHING;
 
 INSERT INTO permissions (permission_code, description)
-VALUES ('PROJECT.READ', 'Read projects'),
-       ('PROJECT.WRITE', 'Write projects'),
-       ('ASSET.GATEWAY.READ', 'Read gateways'),
-       ('ASSET.GATEWAY.WRITE', 'Write gateways'),
-       ('ASSET.DEVICE.READ', 'Read devices'),
-       ('ASSET.DEVICE.WRITE', 'Write devices'),
-       ('ASSET.POINT.READ', 'Read points'),
-       ('ASSET.POINT.WRITE', 'Write points'),
-       ('DATA.REALTIME.READ', 'Read realtime data'),
-       ('DATA.MEASUREMENTS.READ', 'Read measurements'),
-       ('CONTROL.COMMAND.ISSUE', 'Issue commands'),
-       ('CONTROL.COMMAND.READ', 'Read commands'),
-       ('ALARM.RULE.READ', 'Read alarm rules'),
-       ('ALARM.RULE.WRITE', 'Write alarm rules'),
-       ('ALARM.EVENT.READ', 'Read alarm events'),
-       ('RBAC.USER.READ', 'Read users'),
-       ('RBAC.USER.WRITE', 'Write users'),
-       ('RBAC.ROLE.READ', 'Read roles'),
-       ('RBAC.ROLE.WRITE', 'Write roles'),
-       ('SYSTEM.METRICS.READ', 'Read metrics snapshot')
+VALUES ('PROJECT.READ', '读取项目'),
+       ('PROJECT.WRITE', '编辑项目'),
+       ('ASSET.GATEWAY.READ', '读取网关'),
+       ('ASSET.GATEWAY.WRITE', '编辑网关'),
+       ('ASSET.DEVICE.READ', '读取设备'),
+       ('ASSET.DEVICE.WRITE', '编辑设备'),
+       ('ASSET.POINT.READ', '读取点位'),
+       ('ASSET.POINT.WRITE', '编辑点位'),
+       ('DATA.REALTIME.READ', '读取实时数据'),
+       ('DATA.MEASUREMENTS.READ', '读取历史数据'),
+       ('CONTROL.COMMAND.ISSUE', '下发控制'),
+       ('CONTROL.COMMAND.READ', '读取控制'),
+       ('ALARM.RULE.READ', '读取告警规则'),
+       ('ALARM.RULE.WRITE', '编辑告警规则'),
+       ('ALARM.EVENT.READ', '读取告警事件'),
+       ('RBAC.USER.READ', '读取用户'),
+       ('RBAC.USER.WRITE', '编辑用户'),
+       ('RBAC.ROLE.READ', '读取角色'),
+       ('RBAC.ROLE.WRITE', '编辑角色'),
+       ('SYSTEM.METRICS.READ', '读取系统指标')
 ON CONFLICT (permission_code) DO NOTHING;
 
 INSERT INTO user_roles (user_id, role_code)

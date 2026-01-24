@@ -9,6 +9,7 @@ pub struct OnlineRecord {
     pub project_id: String,
     pub resource_id: String,
     pub last_seen_at_ms: i64,
+    pub last_error: Option<String>,
 }
 
 #[async_trait::async_trait]
@@ -56,4 +57,29 @@ pub trait OnlineStore: Send + Sync {
         project_id: &str,
         device_ids: &[String],
     ) -> Result<std::collections::HashMap<String, i64>, StorageError>;
+
+    /// 记录资源报错信息
+    async fn report_resource_error(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_id: &str,
+        error: &str,
+    ) -> Result<(), StorageError>;
+
+    /// 获取单个资源最近一次报错
+    async fn get_resource_error(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_id: &str,
+    ) -> Result<Option<String>, StorageError>;
+
+    /// 批量获取资源最近一次报错
+    async fn list_resources_errors(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, String>, StorageError>;
 }

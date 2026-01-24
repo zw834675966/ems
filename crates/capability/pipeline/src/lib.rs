@@ -523,7 +523,7 @@ mod tests {
 
     #[tokio::test]
     async fn pipeline_backpressure_rejects_when_full() {
-        let writer = Arc::new(FailingWriter::default());
+        let writer = Arc::new(FailingWriter);
         let pipeline = Pipeline::with_config(
             writer,
             PipelineConfig {

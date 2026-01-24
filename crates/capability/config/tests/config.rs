@@ -6,8 +6,9 @@ fn load_config_from_env() {
     unsafe {
         std::env::set_var(
             "EMS_DATABASE_URL",
-            "postgresql://ems:admin123@localhost:5432/ems",
+            "postgresql://ems:change-me@localhost:5432/ems",
         );
+        std::env::set_var("EMS_REDIS_URL", "redis://localhost:6379");
         std::env::set_var("EMS_JWT_SECRET", "secret");
         std::env::set_var("EMS_JWT_ACCESS_TTL_SECONDS", "3600");
         std::env::set_var("EMS_JWT_REFRESH_TTL_SECONDS", "7200");

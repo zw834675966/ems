@@ -37,8 +37,7 @@ use crate::middleware::require_tenant_context;
 use crate::utils::audit::extract_client_ip;
 use crate::utils::response::{auth_error, internal_auth_error};
 use api_contract::{
-    ApiResponse, AsyncRoute, LoginRequest, LoginResponse, RefreshTokenRequest,
-    RefreshTokenResponse, RouteMeta,
+    ApiResponse, AsyncRoute, LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse,
 };
 use axum::{
     Json,
@@ -46,7 +45,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use domain::permissions;
+
+use domain::{TenantContext, permissions};
 use ems_auth::AuthError;
 use ems_storage::{AuditBuilder, audit_actions};
 
@@ -181,8 +181,16 @@ pub async fn login(
 
             auth_error(StatusCode::UNAUTHORIZED)
         }
-        // 其他认证服务错误，返回 500
-        Err(err) => internal_auth_error(err),
+        // 其他认证服务错误
+        Err(err) => {
+            // 记录详细的内部错误原因
+            tracing::error!(error = %err, username = %req.username, "login failed due to internal error");
+
+            // 如果是内部错误，尝试判断是否可能是数据库连接问题
+            // 这里我们简单地返回 500，但有了上面的 error 日志，排查会更容易
+            // 注意：AuthError::Internal 包含了底层的错误信息字符串
+            internal_auth_error(err)
+        }
     }
 }
 
@@ -299,7 +307,7 @@ pub async fn refresh_token(
 ///
 /// # Route Structure
 ///
-/// ```
+/// ```text
 /// /ems (根路由)
 /// ├── /ems/projects (项目管理) - 需要 PROJECT.READ 或 PROJECT.WRITE 权限
 /// ├── /ems/gateways (网关管理) - 需要 ASSET.GATEWAY.READ 或 ASSET.GATEWAY.WRITE 权限
@@ -321,209 +329,257 @@ pub async fn refresh_token(
 ///
 /// - `401 UNAUTHORIZED`: 未提供 token 或 token 无效/已过期
 pub async fn get_async_routes(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    // 验证 Bearer token 并提取租户上下文（包含用户角色和权限）
     let ctx = match require_tenant_context(&state, &headers) {
         Ok(ctx) => ctx,
         Err(response) => return response,
     };
 
-    // 准备用户角色数据：如果角色列表为空则返回 None，否则克隆列表
-    let roles = if ctx.roles.is_empty() {
-        None
-    } else {
-        Some(ctx.roles.clone())
-    };
+    fn has_any_permission(ctx: &TenantContext, permissions: &[&str]) -> bool {
+        if permissions.is_empty() {
+            return true;
+        }
+        permissions
+            .iter()
+            .any(|permission| ctx.permissions.iter().any(|item| item == permission))
+    }
 
-    // 路由元数据构造闭包
-    // title: 路由标题
-    // icon: 图标标识符 (Iconify 格式，如 "ri:xyz")
-    // rank: 路由排序（数字越小越靠前）
-    // auths: 访问此路由所需的权限列表（None 表示无权限要求）
-    let meta = |title: &str, icon: &str, rank: i32, auths: Option<Vec<String>>| RouteMeta {
-        title: title.to_string(),
-        icon: icon.to_string(),
-        rank,
-        roles: roles.clone(), // 将用户角色绑定到路由元数据（前端用于角色过滤）
-        auths,
-    };
+    fn route_meta(
+        title: &str,
+        icon: &str,
+        rank: i32,
+        auths: Option<Vec<&str>>,
+    ) -> api_contract::RouteMeta {
+        api_contract::RouteMeta {
+            title: title.to_string(),
+            icon: icon.to_string(),
+            rank,
+            roles: None,
+            auths: auths.map(|items| items.into_iter().map(|s| s.to_string()).collect()),
+        }
+    }
 
-    // 构建路由树
-    let routes = vec![AsyncRoute {
-        path: "/ems".to_string(),
-        name: "EMS".to_string(),
-        component: "Layout".to_string(), // 根路由使用布局组件
-        meta: meta("EMS", "ri:flashlight-line", 1, None), // 根路由无权限限制
-        children: vec![
-            // 项目管理路由
-            AsyncRoute {
-                path: "/ems/projects".to_string(),
-                name: "EmsProjects".to_string(),
-                component: "ems/projects/index".to_string(),
-                meta: meta(
-                    "项目",
-                    "ri:folders-line",
-                    1,
-                    // 拥有任一权限即可访问（前端逻辑：auths 为权限数组，满足其一即可）
-                    Some(vec![
-                        permissions::PROJECT_READ.to_string(),
-                        permissions::PROJECT_WRITE.to_string(),
-                    ]),
-                ),
-                children: Vec::new(), // 叶子节点使用空数组而非省略
-            },
-            // 网关管理路由
-            AsyncRoute {
-                path: "/ems/gateways".to_string(),
-                name: "EmsGateways".to_string(),
-                component: "ems/gateways/index".to_string(),
-                meta: meta(
-                    "网关",
-                    "ri:router-line",
-                    2,
-                    Some(vec![
-                        permissions::ASSET_GATEWAY_READ.to_string(),
-                        permissions::ASSET_GATEWAY_WRITE.to_string(),
-                    ]),
-                ),
-                children: Vec::new(),
-            },
-            // 设备管理路由
-            AsyncRoute {
-                path: "/ems/devices".to_string(),
-                name: "EmsDevices".to_string(),
-                component: "ems/devices/index".to_string(),
-                meta: meta(
-                    "设备",
-                    "ri:cpu-line",
-                    3,
-                    Some(vec![
-                        permissions::ASSET_DEVICE_READ.to_string(),
-                        permissions::ASSET_DEVICE_WRITE.to_string(),
-                    ]),
-                ),
-                children: Vec::new(),
-            },
-            // 点位管理路由
-            AsyncRoute {
-                path: "/ems/points".to_string(),
-                name: "EmsPoints".to_string(),
-                component: "ems/points/index".to_string(),
-                meta: meta(
-                    "点位",
-                    "ri:node-tree",
-                    4,
-                    Some(vec![
-                        permissions::ASSET_POINT_READ.to_string(),
-                        permissions::ASSET_POINT_WRITE.to_string(),
-                    ]),
-                ),
-                children: Vec::new(),
-            },
-            // 点位映射路由
-            AsyncRoute {
-                path: "/ems/point-mappings".to_string(),
-                name: "EmsPointMappings".to_string(),
-                component: "ems/point-mappings/index".to_string(),
-                meta: meta(
-                    "点位映射",
-                    "ri:links-line",
-                    5,
-                    Some(vec![
-                        permissions::ASSET_POINT_READ.to_string(),
-                        permissions::ASSET_POINT_WRITE.to_string(),
-                    ]),
-                ),
-                children: Vec::new(),
-            },
-            // 采集策略路由（原实时查询）
-            AsyncRoute {
-                path: "/ems/realtime".to_string(),
-                name: "EmsRealtime".to_string(),
-                component: "ems/realtime/index".to_string(),
-                meta: meta(
-                    "采集策略",
-                    "ri:pulse-line",
-                    6,
-                    Some(vec![permissions::DATA_REALTIME_READ.to_string()]),
-                ),
-                children: Vec::new(),
-            },
-            // 历史查询路由
-            AsyncRoute {
-                path: "/ems/measurements".to_string(),
-                name: "EmsMeasurements".to_string(),
-                component: "ems/measurements/index".to_string(),
-                meta: meta(
-                    "历史",
-                    "ri:history-line",
-                    7,
-                    Some(vec![permissions::DATA_MEASUREMENTS_READ.to_string()]),
-                ),
-                children: Vec::new(),
-            },
-            // 控制命令路由
-            AsyncRoute {
-                path: "/ems/commands".to_string(),
-                name: "EmsCommands".to_string(),
-                component: "ems/commands/index".to_string(),
-                meta: meta(
-                    "控制",
-                    "ri:terminal-window-line",
-                    8,
-                    Some(vec![
-                        permissions::CONTROL_COMMAND_ISSUE.to_string(),
-                        permissions::CONTROL_COMMAND_READ.to_string(),
-                    ]),
-                ),
-                children: Vec::new(),
-            },
-            // 审计日志路由
-            AsyncRoute {
-                path: "/ems/audit".to_string(),
-                name: "EmsAudit".to_string(),
-                component: "ems/audit/index".to_string(),
-                meta: meta(
-                    "审计",
-                    "ri:shield-user-line",
-                    9,
-                    Some(vec![permissions::CONTROL_COMMAND_READ.to_string()]),
-                ),
-                children: Vec::new(),
-            },
-            // RBAC 用户管理（tenant 级）
-            AsyncRoute {
-                path: "/ems/rbac-users".to_string(),
-                name: "EmsRbacUsers".to_string(),
-                component: "ems/rbac/users/index".to_string(),
-                meta: meta(
-                    "用户",
-                    "ri:user-settings-line",
-                    10,
-                    Some(vec![
-                        permissions::RBAC_USER_READ.to_string(),
-                        permissions::RBAC_USER_WRITE.to_string(),
-                    ]),
-                ),
-                children: Vec::new(),
-            },
-            // RBAC 角色管理（tenant 级）
-            AsyncRoute {
-                path: "/ems/rbac-roles".to_string(),
-                name: "EmsRbacRoles".to_string(),
-                component: "ems/rbac/roles/index".to_string(),
-                meta: meta(
-                    "角色",
-                    "ri:team-line",
-                    11,
-                    Some(vec![
-                        permissions::RBAC_ROLE_READ.to_string(),
-                        permissions::RBAC_ROLE_WRITE.to_string(),
-                    ]),
-                ),
-                children: Vec::new(),
-            },
-        ],
-    }];
+    fn page_route(
+        ctx: &TenantContext,
+        path: &str,
+        name: &str,
+        component: &str,
+        title: &str,
+        icon: &str,
+        rank: i32,
+        required_permissions: &[&str],
+    ) -> Option<AsyncRoute> {
+        if !has_any_permission(ctx, required_permissions) {
+            return None;
+        }
+        Some(AsyncRoute {
+            path: path.to_string(),
+            name: name.to_string(),
+            component: component.to_string(),
+            meta: route_meta(
+                title,
+                icon,
+                rank,
+                if required_permissions.is_empty() {
+                    None
+                } else {
+                    Some(required_permissions.to_vec())
+                },
+            ),
+            children: Vec::new(),
+        })
+    }
+
+    fn group_route(
+        path: &str,
+        name: &str,
+        component: &str,
+        title: &str,
+        icon: &str,
+        rank: i32,
+        children: Vec<AsyncRoute>,
+    ) -> Option<AsyncRoute> {
+        if children.is_empty() {
+            return None;
+        }
+        Some(AsyncRoute {
+            path: path.to_string(),
+            name: name.to_string(),
+            component: component.to_string(),
+            meta: route_meta(title, icon, rank, None),
+            children,
+        })
+    }
+
+    let rbac_children: Vec<AsyncRoute> = [
+        page_route(
+            &ctx,
+            "/ems/rbac/users",
+            "EmsRbacUsers",
+            "/src/views/ems/rbac/users/index.vue",
+            "用户管理",
+            "",
+            0,
+            &[permissions::RBAC_USER_READ, permissions::RBAC_USER_WRITE],
+        ),
+        page_route(
+            &ctx,
+            "/ems/rbac/roles",
+            "EmsRbacRoles",
+            "/src/views/ems/rbac/roles/index.vue",
+            "角色管理",
+            "",
+            0,
+            &[permissions::RBAC_ROLE_READ, permissions::RBAC_ROLE_WRITE],
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let ems_children: Vec<AsyncRoute> = [
+        page_route(
+            &ctx,
+            "/ems/projects",
+            "EmsProjects",
+            "/src/views/ems/projects/index.vue",
+            "项目管理",
+            "ep:folder",
+            0,
+            &[permissions::PROJECT_READ, permissions::PROJECT_WRITE],
+        ),
+        page_route(
+            &ctx,
+            "/ems/gateways",
+            "EmsGateways",
+            "/src/views/ems/gateways/index.vue",
+            "网关管理",
+            "ep:connection",
+            0,
+            &[
+                permissions::ASSET_GATEWAY_READ,
+                permissions::ASSET_GATEWAY_WRITE,
+            ],
+        ),
+        page_route(
+            &ctx,
+            "/ems/devices",
+            "EmsDevices",
+            "/src/views/ems/devices/index.vue",
+            "设备管理",
+            "ep:cpu",
+            0,
+            &[
+                permissions::ASSET_DEVICE_READ,
+                permissions::ASSET_DEVICE_WRITE,
+            ],
+        ),
+        page_route(
+            &ctx,
+            "/ems/points",
+            "EmsPoints",
+            "/src/views/ems/points/index.vue",
+            "点位管理",
+            "ep:aim",
+            0,
+            &[
+                permissions::ASSET_POINT_READ,
+                permissions::ASSET_POINT_WRITE,
+            ],
+        ),
+        page_route(
+            &ctx,
+            "/ems/point-mappings",
+            "EmsPointMappings",
+            "/src/views/ems/point-mappings/index.vue",
+            "点位映射",
+            "ep:share",
+            0,
+            &[
+                permissions::ASSET_POINT_READ,
+                permissions::ASSET_POINT_WRITE,
+            ],
+        ),
+        page_route(
+            &ctx,
+            "/ems/collection-strategies",
+            "EmsCollectionStrategies",
+            "/src/views/ems/collection-strategies/index.vue",
+            "采集策略",
+            "ep:timer",
+            0,
+            &[
+                permissions::DATA_REALTIME_READ,
+                permissions::ASSET_POINT_WRITE,
+            ],
+        ),
+        page_route(
+            &ctx,
+            "/ems/realtime",
+            "EmsRealtime",
+            "/src/views/ems/realtime/index.vue",
+            "实时监控",
+            "ep:data-line",
+            0,
+            &[permissions::DATA_REALTIME_READ],
+        ),
+        page_route(
+            &ctx,
+            "/ems/measurements",
+            "EmsMeasurements",
+            "/src/views/ems/measurements/index.vue",
+            "历史数据",
+            "ep:trend-charts",
+            0,
+            &[permissions::DATA_MEASUREMENTS_READ],
+        ),
+        page_route(
+            &ctx,
+            "/ems/commands",
+            "EmsCommands",
+            "/src/views/ems/commands/index.vue",
+            "指令下发",
+            "ep:promotion",
+            0,
+            &[
+                permissions::CONTROL_COMMAND_READ,
+                permissions::CONTROL_COMMAND_ISSUE,
+            ],
+        ),
+        page_route(
+            &ctx,
+            "/ems/audit",
+            "EmsAudit",
+            "/src/views/ems/audit/index.vue",
+            "审计日志",
+            "ep:document-copy",
+            0,
+            &[permissions::CONTROL_COMMAND_READ],
+        ),
+        group_route(
+            "/ems/rbac",
+            "EmsRbac",
+            "ParentView",
+            "权限管理",
+            "ep:lock",
+            0,
+            rbac_children,
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let routes: Vec<AsyncRoute> = group_route(
+        "/ems",
+        "Ems",
+        "ParentView",
+        "能源管理",
+        "ep:monitor",
+        10,
+        ems_children,
+    )
+    .into_iter()
+    .collect();
 
     (StatusCode::OK, Json(ApiResponse::success(routes))).into_response()
 }
@@ -544,5 +600,130 @@ mod tests {
         );
         // 验证能正确提取 "Bearer " 前缀后的 token
         assert_eq!(bearer_token(&headers), Some("token-1"));
+    }
+
+    #[tokio::test]
+    async fn get_async_routes_filters_by_permissions() {
+        use super::get_async_routes;
+        use crate::AppState;
+        use axum::extract::State;
+        use domain::{TenantContext, permissions};
+        use ems_auth::{AuthService, JwtManager};
+        use ems_control::{CommandService, NoopDispatcher};
+        use http_body_util::BodyExt;
+        use serde_json::Value;
+        use std::sync::Arc;
+
+        let user_store: Arc<ems_storage::InMemoryUserStore> =
+            Arc::new(ems_storage::InMemoryUserStore::with_default_admin());
+        let jwt = JwtManager::new("test-secret".to_string(), 3600, 7200);
+        let auth: Arc<AuthService> = Arc::new(AuthService::new(user_store.clone(), jwt));
+        let rbac_store: Arc<dyn ems_storage::RbacStore> = user_store.clone();
+
+        let project_store: Arc<dyn ems_storage::ProjectStore> =
+            Arc::new(ems_storage::InMemoryProjectStore::with_default_project());
+        let gateway_store: Arc<dyn ems_storage::GatewayStore> =
+            Arc::new(ems_storage::InMemoryGatewayStore::new());
+        let device_store: Arc<dyn ems_storage::DeviceStore> =
+            Arc::new(ems_storage::InMemoryDeviceStore::new());
+        let point_store: Arc<dyn ems_storage::PointStore> =
+            Arc::new(ems_storage::InMemoryPointStore::new());
+        let point_mapping_store: Arc<dyn ems_storage::PointMappingStore> =
+            Arc::new(ems_storage::InMemoryPointMappingStore::new());
+        let measurement_store: Arc<dyn ems_storage::MeasurementStore> =
+            Arc::new(ems_storage::InMemoryMeasurementStore::new());
+        let realtime_store: Arc<dyn ems_storage::RealtimeStore> =
+            Arc::new(ems_storage::InMemoryRealtimeStore::new());
+        let online_store: Arc<dyn ems_storage::OnlineStore> =
+            Arc::new(ems_storage::InMemoryOnlineStore::new());
+        let command_store: Arc<dyn ems_storage::CommandStore> =
+            Arc::new(ems_storage::InMemoryCommandStore::new());
+        let command_receipt_store: Arc<dyn ems_storage::CommandReceiptStore> =
+            Arc::new(ems_storage::InMemoryCommandReceiptStore::new());
+        let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
+            Arc::new(ems_storage::InMemoryAuditLogStore::new());
+        let collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore> =
+            Arc::new(ems_storage::InMemoryCollectionStrategyStore::new());
+        let system_log_store: Arc<dyn ems_storage::SystemLogStore> =
+            Arc::new(ems_storage::InMemorySystemLogStore::default());
+
+        let command_service = Arc::new(CommandService::new(
+            command_store.clone(),
+            audit_log_store.clone(),
+            Arc::new(NoopDispatcher),
+        ));
+
+        let state = AppState::new(
+            auth,
+            None,
+            rbac_store,
+            project_store,
+            gateway_store,
+            device_store,
+            point_store,
+            point_mapping_store,
+            measurement_store,
+            realtime_store,
+            online_store,
+            command_store,
+            command_receipt_store,
+            audit_log_store,
+            command_service,
+            collection_strategy_store,
+            system_log_store,
+        );
+
+        let ctx = TenantContext::new(
+            "tenant-1",
+            "user-1",
+            vec!["admin".to_string()],
+            vec![permissions::PROJECT_READ.to_string()],
+            None,
+        );
+        let jwt = JwtManager::new("test-secret".to_string(), 3600, 7200);
+        let tokens = jwt.issue_tokens(&ctx).expect("tokens");
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", tokens.access_token)).expect("header"),
+        );
+
+        let response = get_async_routes(State(state), headers).await;
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("body")
+            .to_bytes();
+        let json: Value = serde_json::from_slice(&bytes).expect("json");
+        let data = json["data"].as_array().expect("data array");
+        assert!(
+            data.iter().any(|item| item["path"] == "/ems"),
+            "expected /ems root route"
+        );
+        let ems_route = data
+            .iter()
+            .find(|item| item["path"] == "/ems")
+            .expect("/ems route should exist");
+
+        assert_eq!(
+            ems_route["component"], "ParentView",
+            "/ems route component should be ParentView"
+        );
+
+        let ems_children = ems_route["children"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        assert!(
+            ems_children
+                .iter()
+                .any(|item| item["path"] == "/ems/projects"),
+            "expected /ems/projects to be present when PROJECT.READ is granted"
+        );
     }
 }

@@ -338,8 +338,8 @@ impl CollectionStrategyStore for PgCollectionStrategyStore {
         strategy_id: &str,
         last_value: Option<String>,
         last_error: Option<String>,
-    ) -> Result<bool, StorageError> {
-        let result = sqlx::query(
+    ) -> Result<(), StorageError> {
+        sqlx::query(
             "UPDATE collection_strategies \
              SET last_collected_at = NOW(), \
              last_value = $3, \
@@ -354,7 +354,7 @@ impl CollectionStrategyStore for PgCollectionStrategyStore {
         .execute(&self.pool)
         .await?;
 
-        Ok(result.rows_affected() > 0)
+        Ok(())
     }
 }
 

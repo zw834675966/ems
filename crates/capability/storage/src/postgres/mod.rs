@@ -156,6 +156,7 @@ pub mod measurement;
 pub mod point;
 pub mod point_mapping;
 pub mod project;
+pub mod system_logs;
 pub mod user;
 
 // 导出到 crate 根目录，方便外部引用
@@ -169,4 +170,5 @@ pub use measurement::*;
 pub use point::*;
 pub use point_mapping::*;
 pub use project::*;
+pub use system_logs::*;
 pub use user::*;

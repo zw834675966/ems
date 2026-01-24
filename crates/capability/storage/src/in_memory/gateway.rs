@@ -53,6 +53,31 @@ impl GatewayStore for InMemoryGatewayStore {
         Ok(items)
     }
 
+    async fn list_gateways_by_protocol_type(
+        &self,
+        ctx: &TenantContext,
+        protocol_type: &str,
+    ) -> Result<Vec<GatewayRecord>, StorageError> {
+        let project_scope = ctx.project_scope.as_deref();
+        let tenant_id = ctx.tenant_id.as_str();
+        let items = self
+            .gateways
+            .read()
+            .map(|map| {
+                map.values()
+                    .filter(|item| item.protocol_type == protocol_type)
+                    .filter(|item| tenant_id.is_empty() || item.tenant_id == tenant_id)
+                    .filter(|item| match project_scope {
+                        Some(project_id) => item.project_id == project_id,
+                        None => true,
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(items)
+    }
+
     /// 查找指定网关
     async fn find_gateway(
         &self,
@@ -116,6 +141,12 @@ impl GatewayStore for InMemoryGatewayStore {
         }
         if let Some(status) = update.status {
             gateway.status = status;
+        }
+        if let Some(protocol_type) = update.protocol_type {
+            gateway.protocol_type = protocol_type;
+        }
+        if let Some(protocol_config) = update.protocol_config {
+            gateway.protocol_config = Some(protocol_config);
         }
         Ok(Some(gateway.clone()))
     }

@@ -32,6 +32,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use domain::permissions;
+use serde_json::Value;
 use uuid::Uuid;
 
 /// 项目路径参数
@@ -132,6 +133,11 @@ pub async fn list_gateways(
                 .list_gateways_last_seen_at_ms(&ctx, &path.project_id, &gateway_ids)
                 .await
                 .unwrap_or_default();
+            let errors = state
+                .online_store
+                .list_resources_errors(&ctx, &path.project_id, &gateway_ids)
+                .await
+                .unwrap_or_default();
             let data: Vec<GatewayDto> = items
                 .into_iter()
                 .map(|record| {
@@ -140,6 +146,7 @@ pub async fn list_gateways(
                         dto.online = true;
                         dto.last_seen_at_ms = Some(ts_ms);
                     }
+                    dto.last_error = errors.get(&dto.gateway_id).cloned();
                     dto
                 })
                 .collect();
@@ -218,6 +225,13 @@ pub async fn create_gateway(
     // 步骤 3: 处理可选字段 status，默认值为 "offline"
     let status = req.status.unwrap_or_else(|| "offline".to_string());
 
+    let protocol_type = req.protocol_type.unwrap_or_else(|| "mqtt".to_string());
+
+    // 步骤 3.5: 验证协议配置
+    if let Err(res) = validate_protocol_config(&protocol_type, req.protocol_config.as_deref()) {
+        return res;
+    }
+
     // 步骤 4: 构建网关记录
     // - gateway_id: 自动生成 UUID v4
     // - tenant_id: 从上下文获取（多租户隔离）
@@ -229,7 +243,7 @@ pub async fn create_gateway(
         project_id: path.project_id,
         name,
         status,
-        protocol_type: req.protocol_type.unwrap_or_else(|| "mqtt".to_string()),
+        protocol_type,
         protocol_config: req.protocol_config,
     };
 
@@ -310,6 +324,12 @@ pub async fn get_gateway(
                 dto.online = true;
                 dto.last_seen_at_ms = Some(ts_ms);
             }
+            dto.last_error = state
+                .online_store
+                .get_resource_error(&ctx, &path.project_id, &path.gateway_id)
+                .await
+                .ok()
+                .flatten();
             (StatusCode::OK, Json(ApiResponse::success(dto))).into_response()
         }
         Ok(None) => not_found_error(),
@@ -391,18 +411,40 @@ pub async fn update_gateway(
     };
 
     // 步骤 4: 检查是否至少提供了一个更新字段
-    let protocol_type = req.protocol_type;
-    let protocol_config = req.protocol_config;
-    if name.is_none() && status.is_none() && protocol_type.is_none() && protocol_config.is_none() {
+    if name.is_none()
+        && status.is_none()
+        && req.protocol_type.is_none()
+        && req.protocol_config.is_none()
+    {
         return bad_request_error("empty update");
     }
 
-    // 步骤 5: 构建更新对象
+    // 步骤 5: 验证协议配置（如果提供了配置或类型，需要确保逻辑一致性）
+    // 为了验证，我们需要知道最终的协议类型
+    let existing = match state
+        .gateway_store
+        .find_gateway(&ctx, &path.project_id, &path.gateway_id)
+        .await
+    {
+        Ok(Some(g)) => g,
+        Ok(None) => return not_found_error(),
+        Err(err) => return storage_error(err),
+    };
+
+    let final_type = req
+        .protocol_type
+        .as_deref()
+        .unwrap_or(&existing.protocol_type);
+    if let Err(res) = validate_protocol_config(final_type, req.protocol_config.as_deref()) {
+        return res;
+    }
+
+    // 步骤 6: 构建更新对象
     let update = ems_storage::GatewayUpdate {
         name,
         status,
-        protocol_type,
-        protocol_config,
+        protocol_type: req.protocol_type,
+        protocol_config: req.protocol_config,
     };
 
     // 步骤 6: 执行更新并返回
@@ -423,6 +465,12 @@ pub async fn update_gateway(
                 dto.online = true;
                 dto.last_seen_at_ms = Some(ts_ms);
             }
+            dto.last_error = state
+                .online_store
+                .get_resource_error(&ctx, &path.project_id, &path.gateway_id)
+                .await
+                .ok()
+                .flatten();
             (StatusCode::OK, Json(ApiResponse::success(dto))).into_response()
         }
         Ok(None) => not_found_error(),
@@ -487,5 +535,260 @@ pub async fn delete_gateway(
         Ok(true) => (StatusCode::OK, Json(ApiResponse::success(()))).into_response(),
         Ok(false) => not_found_error(),
         Err(err) => storage_error(err),
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_protocol_config(protocol_type: &str, config_str: Option<&str>) -> Result<(), Response> {
+    let config_str = match config_str {
+        Some(s) if !s.is_empty() => s,
+        _ => return Ok(()), // No config to validate
+    };
+
+    let config: Value = serde_json::from_str(config_str).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::error(
+                api_contract::error_codes::INVALID_REQUEST,
+                "无效的协议配置 JSON 格式",
+            )),
+        )
+            .into_response()
+    })?;
+
+    match protocol_type {
+        "modbus_tcp" => {
+            if config.get("host").and_then(|v| v.as_str()).is_none() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiResponse::<()>::error(
+                        api_contract::error_codes::INVALID_REQUEST,
+                        "Modbus TCP 配置缺少 'host' 字段",
+                    )),
+                )
+                    .into_response());
+            }
+        }
+        "tcp_client" => {
+            if config.get("host").and_then(|v| v.as_str()).is_none() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiResponse::<()>::error(
+                        api_contract::error_codes::INVALID_REQUEST,
+                        "TCP Client 配置缺少 'host' 字段",
+                    )),
+                )
+                    .into_response());
+            }
+        }
+        "tcp_server" => {
+            if config
+                .get("listenPort")
+                .and_then(|v| v.as_u64())
+                .or_else(|| config.get("listen_port").and_then(|v| v.as_u64()))
+                .is_none()
+            {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiResponse::<()>::error(
+                        api_contract::error_codes::INVALID_REQUEST,
+                        "TCP Server 配置缺少 'listen_port' 字段",
+                    )),
+                )
+                    .into_response());
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+/// 测试网关连接
+///
+/// # HTTP 方法与路径
+/// `POST /projects/{project_id}/gateways/{gateway_id}/test`
+///
+/// # 功能描述
+/// 手动测试网关的连接状态，根据网关的协议类型执行相应的测试。
+/// 目前仅支持 Modbus TCP 协议的测试。
+///
+/// # 认证与授权
+/// - **认证**：通过 `require_project_scope` 验证 Bearer token
+/// - **授权**：需要 ASSET_GATEWAY_READ 权限
+///
+/// # 成功响应示例 (200 OK)
+/// ```json
+/// {
+///   "success": true,
+///   "data": {
+///     "success": true,
+///     "latencyMs": 45,
+///     "error": null,
+///     "testedAtMs": 1705645200000
+///   },
+///   "error": null
+/// }
+/// ```
+///
+/// # 错误响应
+/// - `400 BAD REQUEST`：不支持的协议类型
+/// - `401 UNAUTHORIZED`：Bearer token 无效或缺失
+/// - `403 FORBIDDEN`：项目不属于当前租户
+/// - `404 NOT FOUND`：网关不存在
+/// - `500 INTERNAL SERVER ERROR`：存储层或测试执行失败
+pub async fn test_gateway(
+    State(state): State<AppState>,
+    Path(path): Path<GatewayPath>,
+    headers: HeaderMap,
+) -> Response {
+    use api_contract::TestGatewayResponse;
+    use std::time::Instant;
+
+    let ctx = match require_project_scope(&state, &headers, &path.project_id).await {
+        Ok(ctx) => ctx,
+        Err(response) => return response,
+    };
+    if let Err(response) = require_permission(&ctx, permissions::ASSET_GATEWAY_READ) {
+        return response;
+    }
+
+    // 获取网关信息
+    let gateway = match state
+        .gateway_store
+        .find_gateway(&ctx, &path.project_id, &path.gateway_id)
+        .await
+    {
+        Ok(Some(gw)) => gw,
+        Ok(None) => return not_found_error(),
+        Err(err) => return storage_error(err),
+    };
+
+    let tested_at_ms = chrono::Utc::now().timestamp_millis();
+
+    // 根据协议类型执行测试
+    let result = match gateway.protocol_type.as_str() {
+        "modbus_tcp" => {
+            // 解析 Modbus 配置
+            let config: ems_protocol::ModbusTcpConfig = match gateway.protocol_config {
+                Some(ref cfg_str) => match serde_json::from_str(cfg_str) {
+                    Ok(cfg) => cfg,
+                    Err(e) => {
+                        return (
+                            StatusCode::OK,
+                            Json(ApiResponse::success(TestGatewayResponse {
+                                success: false,
+                                latency_ms: None,
+                                error: Some(format!("配置解析失败: {}", e)),
+                                tested_at_ms,
+                            })),
+                        )
+                            .into_response();
+                    }
+                },
+                None => {
+                    return (
+                        StatusCode::OK,
+                        Json(ApiResponse::success(TestGatewayResponse {
+                            success: false,
+                            latency_ms: None,
+                            error: Some("网关未配置协议参数".to_string()),
+                            tested_at_ms,
+                        })),
+                    )
+                        .into_response();
+                }
+            };
+
+            // 执行 Modbus TCP 测试
+            let start = Instant::now();
+            match test_modbus_connection(&config).await {
+                Ok(_) => {
+                    let latency = start.elapsed().as_millis() as i64;
+
+                    // 更新在线状态
+                    let _ = state
+                        .online_store
+                        .touch_gateway(&ctx, &path.project_id, &path.gateway_id, tested_at_ms)
+                        .await;
+
+                    // 清除错误记录 (使用空字符串表示清除)
+                    let _ = state
+                        .online_store
+                        .report_resource_error(&ctx, &path.project_id, &path.gateway_id, "")
+                        .await;
+
+                    TestGatewayResponse {
+                        success: true,
+                        latency_ms: Some(latency),
+                        error: None,
+                        tested_at_ms,
+                    }
+                }
+                Err(e) => {
+                    // 记录错误
+                    let error_msg = e.to_string();
+                    let _ = state
+                        .online_store
+                        .report_resource_error(&ctx, &path.project_id, &path.gateway_id, &error_msg)
+                        .await;
+
+                    TestGatewayResponse {
+                        success: false,
+                        latency_ms: None,
+                        error: Some(error_msg),
+                        tested_at_ms,
+                    }
+                }
+            }
+        }
+        _ => TestGatewayResponse {
+            success: false,
+            latency_ms: None,
+            error: Some(format!("暂不支持 {} 协议的测试", gateway.protocol_type)),
+            tested_at_ms,
+        },
+    };
+
+    (StatusCode::OK, Json(ApiResponse::success(result))).into_response()
+}
+
+/// 测试 Modbus TCP 连接
+///
+/// 尝试连接到 Modbus TCP 服务器并读取一个寄存器以验证连接。
+async fn test_modbus_connection(
+    config: &ems_protocol::ModbusTcpConfig,
+) -> Result<(), ems_protocol::ProtocolError> {
+    use tokio_modbus::prelude::*;
+
+    let socket_addr = format!("{}:{}", config.host, config.port);
+    let socket_addr = socket_addr
+        .parse()
+        .map_err(|e| ems_protocol::ProtocolError::Connection(format!("Invalid address: {}", e)))?;
+
+    // 设置 5 秒超时
+    let timeout = std::time::Duration::from_secs(5);
+
+    // 尝试连接
+    let connect_future = tokio_modbus::client::tcp::connect(socket_addr);
+    let mut ctx = match tokio::time::timeout(timeout, connect_future).await {
+        Ok(Ok(ctx)) => ctx,
+        Ok(Err(e)) => {
+            return Err(ems_protocol::ProtocolError::Connection(e.to_string()));
+        }
+        Err(_) => {
+            return Err(ems_protocol::ProtocolError::Timeout(
+                "Connection timeout".to_string(),
+            ));
+        }
+    };
+
+    // 尝试读取一个保持寄存器 (地址 0)
+    let read_future = ctx.read_holding_registers(0, 1);
+    match tokio::time::timeout(timeout, read_future).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(ems_protocol::ProtocolError::Modbus(e.to_string())),
+        Err(_) => Err(ems_protocol::ProtocolError::Timeout(
+            "Read timeout".to_string(),
+        )),
     }
 }

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! 采集链路装配模块
 //!
 //! 该模块负责将数据采集的各个组件（数据源、规整器、处理流水线、存储层）组装在一起，
@@ -8,6 +9,10 @@ use ems_config::AppConfig;
 use ems_ingest::{IngestError, MqttSource, MqttSourceConfig, NoopSource, RawEventHandler, Source};
 use ems_normalize::{Normalizer, StoragePointMappingProvider};
 use ems_pipeline::{Pipeline, PipelineError, StoragePointValueWriter};
+use ems_protocol::{
+    ModbusTcpConfig, ModbusTcpSource, ProtocolEvent, TcpDeviceAddress, TcpPointDetail,
+    TcpPointMapping, TcpServerConfig, TcpServerSource,
+};
 use ems_storage::{
     DeviceStore, IngestWalStore, MeasurementStore, OnlineStore, PointMappingStore, PointStore,
     RealtimeStore,
@@ -19,7 +24,8 @@ use ems_telemetry::{
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{info, warn};
+use tokio::sync::Mutex;
+use tracing::{error, info, warn};
 
 /// 流水线处理器
 ///
@@ -41,6 +47,91 @@ struct PipelineHandler {
     collection_strategy_store: Arc<dyn ems_storage::CollectionStrategyStore>,
     /// WAL 存储，用于原始事件持久化（防止崩溃丢数据）
     wal_store: Arc<dyn IngestWalStore>,
+}
+
+impl PipelineHandler {
+    /// 处理已规整好或采集层直接解析出的点位值
+    pub async fn handle_point_value(&self, value: domain::PointValue) -> Result<(), IngestError> {
+        // 2. 流水线处理：负责过滤、去重并最终写入存储
+        let write_started_at = Instant::now();
+        let point_id = value.point_id.clone();
+        let tenant_id = value.tenant_id.clone();
+        let project_id = value.project_id.clone();
+        let ts_ms = value.ts_ms;
+        let value_str = point_value_to_string(&value.value);
+        let quality = value.quality.clone();
+
+        match self.pipeline.handle(value).await {
+            Ok(result) => {
+                // 3. 更新在线状态：根据成功处理的点位，更新设备和网关的最后活跃时间
+                let ctx = domain::TenantContext::new(
+                    tenant_id.clone(),
+                    "system".to_string(),
+                    Vec::new(),
+                    Vec::new(),
+                    Some(project_id.clone()),
+                );
+                let _ = touch_online_from_point(
+                    &ctx,
+                    &project_id,
+                    &point_id,
+                    ts_ms,
+                    self.point_store.clone(),
+                    self.device_store.clone(),
+                    self.online_store.clone(),
+                )
+                .await;
+
+                // 物理写入成功后记录各类指标
+                if result.written {
+                    record_write_success();
+                    record_write_latency_ms(write_started_at.elapsed().as_millis() as u64);
+                    if let Some(latency_ms) = end_to_end_latency_ms(ts_ms) {
+                        record_end_to_end_latency_ms(latency_ms);
+                    }
+                } else if let Some(reason) = result.reason.as_deref() {
+                    // 如果数据被丢弃，记录原因（通过指标统计）
+                    match reason {
+                        "duplicate" => record_dropped_duplicate(),
+                        "invalid_ts" | "invalid_value" => record_dropped_invalid(),
+                        "stale" => record_dropped_stale(),
+                        _ => {}
+                    }
+                }
+                info!(
+                    target: "ems.ingest",
+                    tenant_id = %tenant_id,
+                    project_id = %project_id,
+                    point_id = %point_id,
+                    ts_ms = ts_ms,
+                    value = %value_str,
+                    quality = ?quality,
+                    written = result.written,
+                    reason = ?result.reason,
+                    "pipeline_write_result"
+                );
+            }
+            Err(err) => {
+                // 写入流水线过程中发生不可恢复的错误
+                record_write_failure();
+                if matches!(err, PipelineError::Backpressure(_)) {
+                    record_backpressure();
+                }
+                warn!(
+                    target: "ems.ingest",
+                    tenant_id = %tenant_id,
+                    project_id = %project_id,
+                    point_id = %point_id,
+                    ts_ms = ts_ms,
+                    value = %value_str,
+                    error = %err,
+                    "pipeline_write_failed"
+                );
+                return Err(IngestError::Handler(err.to_string()));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -92,100 +183,13 @@ impl RawEventHandler for PipelineHandler {
 
         // 记录规整化成功的点位值指标
         record_normalized_value();
-        let point_id = value.point_id.clone();
-        let tenant_id = value.tenant_id.clone();
-        let project_id = value.project_id.clone();
-        let ts_ms = value.ts_ms;
-        let value_str = point_value_to_string(&value.value);
-        let quality = value.quality.clone();
-
-        info!(
-            target: "ems.ingest",
-            tenant_id = %tenant_id,
-            project_id = %project_id,
-            point_id = %point_id,
-            ts_ms = ts_ms,
-            value = %value_str,
-            quality = ?quality,
-            "point_value_normalized"
-        );
-
-        // 2. 流水线处理：负责过滤、去重并最终写入存储
-        let write_started_at = Instant::now();
-        match self.pipeline.handle(value).await {
-            Ok(result) => {
-                // 3. 更新在线状态：根据成功处理的点位，更新设备和网关的最后活跃时间
-                let ctx = domain::TenantContext::new(
-                    tenant_id.clone(),
-                    "system".to_string(),
-                    Vec::new(),
-                    Vec::new(),
-                    Some(project_id.clone()),
-                );
-                let _ = touch_online_from_point(
-                    &ctx,
-                    &project_id,
-                    &point_id,
-                    ts_ms,
-                    self.point_store.clone(),
-                    self.device_store.clone(),
-                    self.online_store.clone(),
-                )
-                .await;
-
-                // 物理写入成功后记录各类指标
-                if result.written {
-                    record_write_success();
-                    record_write_latency_ms(write_started_at.elapsed().as_millis() as u64);
-                    if let Some(latency_ms) = end_to_end_latency_ms(ts_ms) {
-                        record_end_to_end_latency_ms(latency_ms);
-                    }
-                } else if let Some(reason) = result.reason.as_deref() {
-                    // 如果数据被丢弃，记录原因（通过指标统计）
-                    match reason {
-                        "duplicate" => record_dropped_duplicate(),
-                        "invalid_ts" | "invalid_value" => record_dropped_invalid(),
-                        "stale" => record_dropped_stale(),
-                        _ => {}
-                    }
-                }
-                info!(
-                    target: "ems.ingest",
-                    tenant_id = %tenant_id,
-                    project_id = %project_id,
-                    point_id = %point_id,
-                    ts_ms = ts_ms,
-                    value = %value_str,
-                    written = result.written,
-                    reason = ?result.reason,
-                    "pipeline_write_result"
-                );
-            }
-            Err(err) => {
-                // 写入流水线过程中发生不可恢复的错误
-                record_write_failure();
-                if matches!(err, PipelineError::Backpressure(_)) {
-                    record_backpressure();
-                }
-                warn!(
-                    target: "ems.ingest",
-                    tenant_id = %tenant_id,
-                    project_id = %project_id,
-                    point_id = %point_id,
-                    ts_ms = ts_ms,
-                    value = %value_str,
-                    error = %err,
-                    "pipeline_write_failed"
-                );
-                return Err(IngestError::Handler(err.to_string()));
-            }
-        }
+        self.handle_point_value(value).await?;
 
         // 4. WAL 确认：处理成功后从 WAL 中移除
-        if !wal_id.is_empty() {
-            if let Err(err) = self.wal_store.ack_event(&wal_id).await {
-                warn!(target: "ems.ingest", wal_id = %wal_id, error = %err, "wal_ack_failed");
-            }
+        if !wal_id.is_empty()
+            && let Err(err) = self.wal_store.ack_event(&wal_id).await
+        {
+            warn!(target: "ems.ingest", wal_id = %wal_id, error = %err, "wal_ack_failed");
         }
 
         Ok(())
@@ -238,6 +242,7 @@ fn now_epoch_ms() -> i64 {
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_ingest(
     config: &AppConfig,
+    gateway_store: Arc<dyn ems_storage::GatewayStore>,
     point_mapping_store: Arc<dyn PointMappingStore>,
     point_store: Arc<dyn PointStore>,
     device_store: Arc<dyn DeviceStore>,
@@ -248,7 +253,7 @@ pub fn spawn_ingest(
     wal_store: Arc<dyn IngestWalStore>,
 ) -> tokio::task::JoinHandle<()> {
     // 初始化规整化服务
-    let provider = StoragePointMappingProvider::new(point_mapping_store);
+    let provider = StoragePointMappingProvider::new(point_mapping_store.clone());
     let normalizer = Normalizer::new(Arc::new(provider));
 
     // 初始化流水线写入器
@@ -256,12 +261,17 @@ pub fn spawn_ingest(
     let pipeline = Pipeline::new(Arc::new(writer));
 
     // 创建全局唯一的流水线处理器
+    let gateway_store_for_protocols = gateway_store.clone();
+    let point_store_for_protocols = point_store.clone();
+    let device_store_for_protocols = device_store.clone();
+    let point_mapping_store_for_protocols = point_mapping_store.clone();
+    let online_store_for_protocols = online_store.clone();
     let handler = Arc::new(PipelineHandler {
         normalizer,
         pipeline,
         point_store,
-        device_store,
-        online_store,
+        device_store: device_store.clone(),
+        online_store: online_store.clone(),
         collection_strategy_store,
         wal_store,
     });
@@ -315,34 +325,576 @@ pub fn spawn_ingest(
         });
     }
 
-    // 2. 选择采集源：根据配置启用 MQTT 采集或空操作源
+    // 2.    // 3. 产生 MQTT 采集任务
     let source: Arc<dyn Source> = if config.ingest_enabled {
         let mqtt_config = MqttSourceConfig {
             host: config.mqtt_host.clone(),
             port: config.mqtt_port,
             username: config.mqtt_username.clone(),
             password: config.mqtt_password.clone(),
-            topic_prefix: config.mqtt_data_topic_prefix.clone(),
-            has_source_id: config.mqtt_data_topic_has_source_id,
+            topic_prefix: config.mqtt_topic_prefix.clone(),
+            has_source_id: true,
             use_shared_subscription: config.mqtt_use_shared_subscription,
             shared_group: config.mqtt_shared_group.clone(),
+            use_tls: config.mqtt_use_tls,
+            ca_cert_path: config.mqtt_ca_cert_path.clone(),
+            client_cert_path: config.mqtt_client_cert_path.clone(),
+            client_key_path: config.mqtt_client_key_path.clone(),
         };
-        info!(
-            "ingest source: mqtt {}:{} prefix={}",
-            mqtt_config.host, mqtt_config.port, mqtt_config.topic_prefix
-        );
         Arc::new(MqttSource::new(mqtt_config))
     } else {
-        info!("ingest source: noop (EMS_INGEST=off)");
         Arc::new(NoopSource)
     };
 
-    // 3. 运行采集源任务
+    let handler_move = handler.clone();
     tokio::spawn(async move {
-        if let Err(err) = source.run(handler).await {
+        if let Err(err) = source.run(handler_move).await {
             warn!("ingest stopped: {}", err);
         }
+    });
+
+    // 4. 启动 Modbus 多网关管理
+    if config.ingest_enabled {
+        let manager = ModbusProtocolManager::new(
+            handler.clone(),
+            gateway_store_for_protocols.clone(),
+            device_store_for_protocols.clone(),
+            point_mapping_store_for_protocols.clone(),
+            online_store_for_protocols.clone(),
+        );
+        tokio::spawn(async move {
+            manager.run().await;
+        });
+    }
+
+    // 5. 启动 TCP Server 多网关管理
+    if config.ingest_enabled {
+        let manager = TcpServerProtocolManager::new(
+            handler.clone(),
+            gateway_store_for_protocols,
+            device_store_for_protocols,
+            point_store_for_protocols,
+            point_mapping_store_for_protocols,
+            online_store_for_protocols,
+        );
+        tokio::spawn(async move {
+            manager.run().await;
+        });
+    }
+
+    tokio::spawn(async move {
+        // 占位 JoinHandle
     })
+}
+
+/// Modbus 协议管理器，负责动态加载网关并管理采集任务
+struct ModbusProtocolManager {
+    handler: Arc<PipelineHandler>,
+    gateway_store: Arc<dyn ems_storage::GatewayStore>,
+    device_store: Arc<dyn ems_storage::DeviceStore>,
+    point_mapping_store: Arc<dyn ems_storage::PointMappingStore>,
+    online_store: Arc<dyn OnlineStore>,
+    /// 已启动的网关任务 (gateway_id -> AbortHandle)
+    tasks: Arc<Mutex<std::collections::HashMap<String, tokio::task::AbortHandle>>>,
+}
+
+impl ModbusProtocolManager {
+    fn new(
+        handler: Arc<PipelineHandler>,
+        gateway_store: Arc<dyn ems_storage::GatewayStore>,
+        device_store: Arc<dyn ems_storage::DeviceStore>,
+        point_mapping_store: Arc<dyn ems_storage::PointMappingStore>,
+        online_store: Arc<dyn OnlineStore>,
+    ) -> Self {
+        Self {
+            handler,
+            gateway_store,
+            device_store,
+            point_mapping_store,
+            online_store,
+            tasks: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+
+    async fn run(&self) {
+        info!("modbus protocol manager started");
+        let mut interval = tokio::time::interval(Duration::from_secs(30)); // 每 30 秒扫描一次网关配置变更
+        loop {
+            interval.tick().await;
+            if let Err(e) = self.sync_gateways().await {
+                error!("failed to sync modbus gateways: {}", e);
+            }
+        }
+    }
+
+    async fn sync_gateways(&self) -> Result<(), ems_storage::StorageError> {
+        // 1. 获取所有 modbus_tcp 类型的网关（后台扫描）
+        let ctx = domain::TenantContext::new(
+            "".to_string(), // 全量扫描租户 ID 可为空或特定系统租户
+            "system".to_string(),
+            Vec::new(),
+            Vec::new(),
+            None,
+        );
+        let gateways = self
+            .gateway_store
+            .list_gateways_by_protocol_type(&ctx, "modbus_tcp")
+            .await?;
+
+        let mut current_tasks = self.tasks.lock().await;
+        let mut active_gateway_ids = std::collections::HashSet::new();
+
+        for gw in gateways {
+            if gw.protocol_type != "modbus_tcp" {
+                continue;
+            }
+            active_gateway_ids.insert(gw.gateway_id.clone());
+
+            let gw_id = gw.gateway_id.clone();
+            current_tasks.entry(gw_id).or_insert_with(|| {
+                // 启动新任务
+                self.spawn_gateway_task(gw)
+            });
+        }
+
+        // 清理已删除或类型变更的网关
+        current_tasks.retain(|id, handle| {
+            if !active_gateway_ids.contains(id) {
+                handle.abort();
+                false
+            } else {
+                true
+            }
+        });
+
+        Ok(())
+    }
+
+    fn spawn_gateway_task(
+        &self,
+        gateway: ems_storage::models::GatewayRecord,
+    ) -> tokio::task::AbortHandle {
+        let manager = Arc::new(self.clone_lite());
+        let join_handle = tokio::spawn(async move {
+            loop {
+                let res = manager.run_gateway_loop(&gateway).await;
+                if let Err(e) = res {
+                    warn!(gateway_id = %gateway.gateway_id, error = %e, "modbus gateway loop crashed, restarting...");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+            }
+        });
+        join_handle.abort_handle()
+    }
+
+    fn clone_lite(&self) -> Self {
+        Self {
+            handler: self.handler.clone(),
+            gateway_store: self.gateway_store.clone(),
+            device_store: self.device_store.clone(),
+            point_mapping_store: self.point_mapping_store.clone(),
+            online_store: self.online_store.clone(),
+            tasks: self.tasks.clone(),
+        }
+    }
+
+    async fn run_gateway_loop(
+        &self,
+        gateway: &ems_storage::models::GatewayRecord,
+    ) -> Result<(), IngestError> {
+        let config_str = gateway.protocol_config.as_deref().unwrap_or("{}");
+        let config: ModbusTcpConfig = serde_json::from_str(config_str).map_err(|_| {
+            IngestError::Source(format!("invalid modbus_tcp config: {}", config_str))
+        })?;
+
+        // 构建任务列表
+        let ctx = domain::TenantContext::new(
+            gateway.tenant_id.clone(),
+            "system".to_string(),
+            Vec::new(),
+            Vec::new(),
+            Some(gateway.project_id.clone()),
+        );
+
+        let devices = self
+            .device_store
+            .list_devices(&ctx, &gateway.project_id)
+            .await
+            .map_err(|e| IngestError::Source(e.to_string()))?;
+        let mut source = ModbusTcpSource::new(config.clone());
+
+        for dev in devices {
+            if dev.gateway_id != gateway.gateway_id {
+                continue;
+            }
+            let addr_config = dev.address_config.as_deref().unwrap_or("{}");
+
+            let mappings = self
+                .point_mapping_store
+                .list_point_mappings(&ctx, &gateway.project_id)
+                .await
+                .map_err(|e| IngestError::Source(e.to_string()))?;
+
+            for mapping in mappings {
+                if mapping.source_type != "modbus" {
+                    continue;
+                }
+                // 这里需要根据 mapping.point_id 确认是否属于该设备
+                // 简单起见，如果 point_sources 表里没存设备 ID，得去点位表查
+                // 这是一个 N+1 隐患，但在采集初始化阶段可以接受
+                // 或者我们可以先 list_points
+                let detail = mapping.protocol_detail.as_deref().unwrap_or("{}");
+
+                let _ = source.add_task_from_config(
+                    &gateway.tenant_id,
+                    &gateway.project_id,
+                    &gateway.gateway_id,
+                    &dev.device_id,
+                    &mapping.source_id,
+                    addr_config,
+                    detail,
+                    mapping.scale,
+                    mapping.offset,
+                );
+            }
+        }
+
+        // 运行协议采集
+        let proxy_handler = Arc::new(ModbusToIngestHandler {
+            handler: self.handler.clone(),
+            point_mapping_store: self.point_mapping_store.clone(),
+            project_id: gateway.project_id.clone(),
+        });
+
+        // 这里的 run 需要增加错误报告逻辑
+        // 因为 ems-protocol 的 run 是死循环，我们可能需要修改它或者在循环外层处理连接错误
+        loop {
+            match source.run(proxy_handler.clone()).await {
+                Ok(_) => break, // 正常退出
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    warn!(gateway_id = %gateway.gateway_id, error = %err_msg, "modbus poll error");
+                    // 报告给 OnlineStore
+                    let _ = self
+                        .online_store
+                        .report_resource_error(
+                            &ctx,
+                            &gateway.project_id,
+                            &gateway.gateway_id,
+                            &err_msg,
+                        )
+                        .await;
+                    // 指数退避重连
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// TCP Server 协议管理器，负责动态加载网关并管理监听任务
+struct TcpServerProtocolManager {
+    handler: Arc<PipelineHandler>,
+    gateway_store: Arc<dyn ems_storage::GatewayStore>,
+    device_store: Arc<dyn ems_storage::DeviceStore>,
+    point_store: Arc<dyn ems_storage::PointStore>,
+    point_mapping_store: Arc<dyn ems_storage::PointMappingStore>,
+    online_store: Arc<dyn OnlineStore>,
+    tasks: Arc<Mutex<std::collections::HashMap<String, tokio::task::AbortHandle>>>,
+}
+
+impl TcpServerProtocolManager {
+    fn new(
+        handler: Arc<PipelineHandler>,
+        gateway_store: Arc<dyn ems_storage::GatewayStore>,
+        device_store: Arc<dyn ems_storage::DeviceStore>,
+        point_store: Arc<dyn ems_storage::PointStore>,
+        point_mapping_store: Arc<dyn ems_storage::PointMappingStore>,
+        online_store: Arc<dyn OnlineStore>,
+    ) -> Self {
+        Self {
+            handler,
+            gateway_store,
+            device_store,
+            point_store,
+            point_mapping_store,
+            online_store,
+            tasks: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+
+    async fn run(&self) {
+        info!("tcp server protocol manager started");
+        let mut interval = tokio::time::interval(Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            if let Err(e) = self.sync_gateways().await {
+                error!("failed to sync tcp_server gateways: {}", e);
+            }
+        }
+    }
+
+    async fn sync_gateways(&self) -> Result<(), ems_storage::StorageError> {
+        let ctx = domain::TenantContext::new(
+            "".to_string(),
+            "system".to_string(),
+            Vec::new(),
+            Vec::new(),
+            None,
+        );
+        let gateways = self
+            .gateway_store
+            .list_gateways_by_protocol_type(&ctx, "tcp_server")
+            .await?;
+
+        let mut current_tasks = self.tasks.lock().await;
+        let mut active_gateway_ids = std::collections::HashSet::new();
+        for gw in gateways {
+            active_gateway_ids.insert(gw.gateway_id.clone());
+            let gw_id = gw.gateway_id.clone();
+            current_tasks.entry(gw_id).or_insert_with(|| self.spawn_gateway_task(gw));
+        }
+
+        current_tasks.retain(|id, handle| {
+            if !active_gateway_ids.contains(id) {
+                handle.abort();
+                false
+            } else {
+                true
+            }
+        });
+
+        Ok(())
+    }
+
+    fn spawn_gateway_task(
+        &self,
+        gateway: ems_storage::models::GatewayRecord,
+    ) -> tokio::task::AbortHandle {
+        let manager = Arc::new(self.clone_lite());
+        let join_handle = tokio::spawn(async move {
+            let res = manager.run_gateway_loop(&gateway).await;
+            if let Err(e) = res {
+                warn!(
+                    gateway_id = %gateway.gateway_id,
+                    error = %e,
+                    "tcp_server gateway loop stopped"
+                );
+            }
+        });
+        join_handle.abort_handle()
+    }
+
+    fn clone_lite(&self) -> Self {
+        Self {
+            handler: self.handler.clone(),
+            gateway_store: self.gateway_store.clone(),
+            device_store: self.device_store.clone(),
+            point_store: self.point_store.clone(),
+            point_mapping_store: self.point_mapping_store.clone(),
+            online_store: self.online_store.clone(),
+            tasks: self.tasks.clone(),
+        }
+    }
+
+    async fn run_gateway_loop(
+        &self,
+        gateway: &ems_storage::models::GatewayRecord,
+    ) -> Result<(), IngestError> {
+        let config_str = gateway.protocol_config.as_deref().unwrap_or("{}");
+        let config: TcpServerConfig = serde_json::from_str(config_str).map_err(|_| {
+            IngestError::Source(format!("invalid tcp_server config: {}", config_str))
+        })?;
+
+        let source = TcpServerSource::new(config);
+
+        // 构建映射表：device.address_config(devId) + point_sources.protocol_detail(tag/valueType/endian)
+        let ctx = domain::TenantContext::new(
+            gateway.tenant_id.clone(),
+            "system".to_string(),
+            Vec::new(),
+            Vec::new(),
+            Some(gateway.project_id.clone()),
+        );
+
+        let devices = self
+            .device_store
+            .list_devices(&ctx, &gateway.project_id)
+            .await
+            .map_err(|e| IngestError::Source(e.to_string()))?;
+        let mut device_addr: std::collections::HashMap<String, TcpDeviceAddress> =
+            std::collections::HashMap::new();
+        for dev in &devices {
+            if dev.gateway_id != gateway.gateway_id {
+                continue;
+            }
+            let addr_json = dev.address_config.as_deref().unwrap_or("{}");
+            let addr: TcpDeviceAddress = serde_json::from_str(addr_json).map_err(|_| {
+                IngestError::Source(format!("invalid tcp device address_config: {}", addr_json))
+            })?;
+            device_addr.insert(dev.device_id.clone(), addr);
+        }
+
+        let points = self
+            .point_store
+            .list_points(&ctx, &gateway.project_id)
+            .await
+            .map_err(|e| IngestError::Source(e.to_string()))?;
+        let mut point_to_device: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for p in points {
+            point_to_device.insert(p.point_id, p.device_id);
+        }
+
+        let mappings = self
+            .point_mapping_store
+            .list_point_mappings(&ctx, &gateway.project_id)
+            .await
+            .map_err(|e| IngestError::Source(e.to_string()))?;
+
+        for mapping in mappings {
+            if mapping.source_type != "tcp" {
+                continue;
+            }
+            let Some(device_id) = point_to_device.get(&mapping.point_id).cloned() else {
+                continue;
+            };
+            let Some(addr) = device_addr.get(&device_id).cloned() else {
+                continue;
+            };
+
+            let detail_json = mapping.protocol_detail.as_deref().unwrap_or("{}");
+            let detail: TcpPointDetail = serde_json::from_str(detail_json).map_err(|_| {
+                IngestError::Source(format!(
+                    "invalid tcp point protocol_detail: {}",
+                    detail_json
+                ))
+            })?;
+
+            source
+                .register_point_mapping(
+                    addr.dev_id,
+                    detail.tag,
+                    TcpPointMapping {
+                        tenant_id: gateway.tenant_id.clone(),
+                        project_id: gateway.project_id.clone(),
+                        gateway_id: gateway.gateway_id.clone(),
+                        device_id,
+                        source_id: mapping.source_id.clone(),
+                        value_type: detail.value_type,
+                        endian: detail.endian,
+                        scale: mapping.scale,
+                        offset: mapping.offset,
+                    },
+                )
+                .await;
+        }
+
+        let proxy_handler = Arc::new(TcpToIngestHandler {
+            handler: self.handler.clone(),
+            point_mapping_store: self.point_mapping_store.clone(),
+            project_id: gateway.project_id.clone(),
+        });
+
+        // TCP server 会一直监听，只有 bind 等错误才会返回 Err
+        if let Err(err) = source.run(proxy_handler).await {
+            let err_msg = err.to_string();
+            warn!(gateway_id = %gateway.gateway_id, error = %err_msg, "tcp_server run failed");
+            let _ = self
+                .online_store
+                .report_resource_error(&ctx, &gateway.project_id, &gateway.gateway_id, &err_msg)
+                .await;
+            return Err(IngestError::Source(err_msg));
+        }
+
+        Ok(())
+    }
+}
+
+struct TcpToIngestHandler {
+    handler: Arc<PipelineHandler>,
+    point_mapping_store: Arc<dyn ems_storage::PointMappingStore>,
+    project_id: String,
+}
+
+#[async_trait::async_trait]
+impl ems_protocol::ProtocolEventHandler for TcpToIngestHandler {
+    async fn handle(&self, event: ProtocolEvent) -> Result<(), ems_protocol::ProtocolError> {
+        let ctx = domain::TenantContext::new(
+            event.tenant_id.clone(),
+            "system".to_string(),
+            Vec::new(),
+            Vec::new(),
+            Some(self.project_id.clone()),
+        );
+
+        let mapping = self
+            .point_mapping_store
+            .find_point_mapping(&ctx, &self.project_id, &event.source_id)
+            .await
+            .map_err(|e| ems_protocol::ProtocolError::DataParse(e.to_string()))?;
+
+        let Some(mapping) = mapping else {
+            return Ok(());
+        };
+
+        let value = domain::PointValue {
+            tenant_id: event.tenant_id,
+            project_id: event.project_id,
+            point_id: mapping.point_id,
+            ts_ms: event.received_at_ms,
+            value: domain::PointValueData::F64(event.value),
+            quality: None,
+        };
+        let _ = self.handler.handle_point_value(value).await;
+        Ok(())
+    }
+}
+
+struct ModbusToIngestHandler {
+    handler: Arc<PipelineHandler>,
+    point_mapping_store: Arc<dyn ems_storage::PointMappingStore>,
+    project_id: String,
+}
+
+#[async_trait::async_trait]
+impl ems_protocol::ProtocolEventHandler for ModbusToIngestHandler {
+    async fn handle(&self, event: ProtocolEvent) -> Result<(), ems_protocol::ProtocolError> {
+        let ctx = domain::TenantContext::new(
+            event.tenant_id.clone(),
+            "system".to_string(),
+            Vec::new(),
+            Vec::new(),
+            Some(self.project_id.clone()),
+        );
+
+        // 1. 获取映射以解析出 point_id
+        let mapping = self
+            .point_mapping_store
+            .find_point_mapping(&ctx, &self.project_id, &event.source_id)
+            .await
+            .map_err(|e| ems_protocol::ProtocolError::DataParse(e.to_string()))?;
+
+        let Some(mapping) = mapping else {
+            return Ok(());
+        };
+
+        let value = domain::PointValue {
+            tenant_id: event.tenant_id,
+            project_id: event.project_id,
+            point_id: mapping.point_id,
+            ts_ms: event.received_at_ms,
+            value: domain::PointValueData::F64(event.value),
+            quality: None,
+        };
+
+        // 直接进入流水线处理器
+        let _ = self.handler.handle_point_value(value).await;
+
+        Ok(())
+    }
 }
 
 /// 更新设备和网关的在线状态

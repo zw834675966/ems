@@ -26,6 +26,7 @@ pub mod point;
 pub mod point_mapping;
 pub mod project;
 pub mod realtime;
+pub mod system_logs;
 pub mod user;
 
 pub use audit::*;
@@ -40,4 +41,5 @@ pub use point::*;
 pub use point_mapping::*;
 pub use project::*;
 pub use realtime::*;
+pub use system_logs::*;
 pub use user::*;

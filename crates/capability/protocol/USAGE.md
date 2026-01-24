@@ -71,8 +71,7 @@
 ```json
 // 网关配置 (gateway.protocol_config)
 {
-  "listen_port": 9000,
-  "frame_delimiter": "\n"
+  "listenPort": 9000
 }
 ```
 
@@ -245,7 +244,6 @@ impl RawEventHandler for Handler {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = TcpServerConfig {
         listen_port: 9000,
-        frame_delimiter: "\n".to_string(),
     };
 
     let source = TcpServerSource::new("gateway-1", config)?;

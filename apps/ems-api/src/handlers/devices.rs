@@ -25,6 +25,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use domain::permissions;
+use ems_protocol::{ModbusDeviceAddress, TcpDeviceAddress};
+use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -88,6 +90,11 @@ pub async fn list_devices(
                 .list_devices_last_seen_at_ms(&ctx, &path.project_id, &device_ids)
                 .await
                 .unwrap_or_default();
+            let errors = state
+                .online_store
+                .list_resources_errors(&ctx, &path.project_id, &device_ids)
+                .await
+                .unwrap_or_default();
             let data: Vec<DeviceDto> = items
                 .into_iter()
                 .map(|record| {
@@ -96,6 +103,7 @@ pub async fn list_devices(
                         dto.online = true;
                         dto.last_seen_at_ms = Some(ts_ms);
                     }
+                    dto.last_error = errors.get(&dto.device_id).cloned();
                     dto
                 })
                 .collect();
@@ -160,10 +168,15 @@ pub async fn create_device(
         .gateway_store
         .find_gateway(&ctx, &path.project_id, &gateway_id)
         .await;
-    match exists {
-        Ok(Some(_)) => {}
+    let gateway = match exists {
+        Ok(Some(gateway)) => gateway,
         Ok(None) => return bad_request_error("gateway not found"),
         Err(err) => return storage_error(err),
+    };
+
+    if let Err(res) = validate_address_config(&gateway.protocol_type, req.address_config.as_deref())
+    {
+        return res;
     }
     let record = ems_storage::DeviceRecord {
         device_id: Uuid::new_v4().to_string(),
@@ -241,6 +254,12 @@ pub async fn get_device(
                 dto.online = true;
                 dto.last_seen_at_ms = Some(ts_ms);
             }
+            dto.last_error = state
+                .online_store
+                .get_resource_error(&ctx, &path.project_id, &path.device_id)
+                .await
+                .ok()
+                .flatten();
             (StatusCode::OK, Json(ApiResponse::success(dto))).into_response()
         }
         Ok(None) => not_found_error(),
@@ -305,6 +324,31 @@ pub async fn update_device(
     if name.is_none() && model.is_none() && room_id.is_none() && address_config.is_none() {
         return bad_request_error("empty update");
     }
+
+    // 如提供 address_config，按网关协议类型做最小校验（确保前后端配置规范一致）
+    if let Some(address_json) = address_config.as_deref() {
+        let device = match state
+            .device_store
+            .find_device(&ctx, &path.project_id, &path.device_id)
+            .await
+        {
+            Ok(Some(d)) => d,
+            Ok(None) => return not_found_error(),
+            Err(err) => return storage_error(err),
+        };
+        let gateway = match state
+            .gateway_store
+            .find_gateway(&ctx, &path.project_id, &device.gateway_id)
+            .await
+        {
+            Ok(Some(g)) => g,
+            Ok(None) => return bad_request_error("gateway not found"),
+            Err(err) => return storage_error(err),
+        };
+        if let Err(res) = validate_address_config(&gateway.protocol_type, Some(address_json)) {
+            return res;
+        }
+    }
     let update = ems_storage::DeviceUpdate {
         name,
         model,
@@ -333,6 +377,56 @@ pub async fn update_device(
         Ok(None) => not_found_error(),
         Err(err) => storage_error(err),
     }
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_address_config(protocol_type: &str, config_str: Option<&str>) -> Result<(), Response> {
+    let config_str = match config_str {
+        Some(s) if !s.is_empty() => s,
+        _ => return Ok(()),
+    };
+
+    let config: Value = serde_json::from_str(config_str).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::error(
+                api_contract::error_codes::INVALID_REQUEST,
+                "无效的设备 addressConfig JSON 格式",
+            )),
+        )
+            .into_response()
+    })?;
+
+    match protocol_type {
+        "modbus_tcp" => {
+            // 兼容 unitId / slave_id
+            let _addr: ModbusDeviceAddress = serde_json::from_value(config).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiResponse::<()>::error(
+                        api_contract::error_codes::INVALID_REQUEST,
+                        "Modbus 设备 addressConfig 需包含 unitId（或 slave_id）",
+                    )),
+                )
+                    .into_response()
+            })?;
+        }
+        "tcp_server" | "tcp_client" => {
+            let _addr: TcpDeviceAddress = serde_json::from_value(config).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiResponse::<()>::error(
+                        api_contract::error_codes::INVALID_REQUEST,
+                        "TCP 设备 addressConfig 需包含 devId",
+                    )),
+                )
+                    .into_response()
+            })?;
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 /// 删除设备

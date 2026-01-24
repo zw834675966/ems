@@ -74,15 +74,30 @@ pub fn not_found_error() -> Response {
 
 /// 认证内部错误响应
 pub fn internal_auth_error(err: AuthError) -> Response {
-    tracing::error!(error = ?err, "internal auth error");
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ApiResponse::<()>::error(
-            error_codes::INTERNAL_ERROR,
-            "internal error",
-        )),
-    )
-        .into_response()
+    match err {
+        AuthError::ServiceUnavailable(msg) => {
+            tracing::warn!(error = %msg, "auth service unavailable");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ApiResponse::<()>::error(
+                    "SERVICE.UNAVAILABLE",
+                    "service temporarily unavailable",
+                )),
+            )
+                .into_response()
+        }
+        _ => {
+            tracing::error!(error = ?err, "internal auth error");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::<()>::error(
+                    error_codes::INTERNAL_ERROR,
+                    "internal error",
+                )),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// 存储错误响应
@@ -118,6 +133,7 @@ pub fn gateway_to_dto(record: GatewayRecord) -> GatewayDto {
         last_seen_at_ms: None,
         protocol_type: record.protocol_type,
         protocol_config: record.protocol_config,
+        last_error: None,
     }
 }
 
@@ -133,6 +149,7 @@ pub fn device_to_dto(record: DeviceRecord) -> DeviceDto {
         last_seen_at_ms: None,
         room_id: record.room_id,
         address_config: record.address_config,
+        last_error: None,
     }
 }
 

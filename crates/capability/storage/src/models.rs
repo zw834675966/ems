@@ -266,8 +266,8 @@ pub struct PointUpdate {
 ///
 /// 点位映射定义了从外部数据源到内部点位的映射关系。
 /// `protocol_detail` 根据协议类型存储特定配置：
-/// - Modbus: `{"function_code": 3, "register_address": 100, "register_count": 1, "data_type": "int16"}`
-/// - TCP: `{"byte_offset": 2, "byte_length": 2, "data_type": "uint16", "endian": "big"}`
+/// - Modbus: `{"functionCode": 3, "registerAddress": 100, "registerCount": 1, "dataType": "int16", "wordOrder": "ABCD"}`
+/// - TCP (TLV): `{"tag": 1, "valueType": "uint16", "endian": "big_endian"}`
 /// - MQTT: `{"json_path": "$.sensors.temperature", "data_type": "float"}`
 #[derive(Debug, Clone)]
 pub struct PointMappingRecord {
@@ -469,4 +469,146 @@ pub struct CollectionStrategyUpdate {
     pub last_collected_at: Option<i64>,
     pub last_value: Option<String>,
     pub last_error: Option<String>,
+}
+
+// ============================================================================
+// 系统日志模型（用于前端消息通知）
+// ============================================================================
+
+/// 日志分类
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogCategory {
+    /// 操作日志（原"通知"）
+    Operation,
+    /// 错误日志（原"消息"）
+    Error,
+    /// 警告日志（原"待办"）
+    Warning,
+}
+
+impl LogCategory {
+    /// 从字符串解析
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "operation" => Some(Self::Operation),
+            "error" => Some(Self::Error),
+            "warning" => Some(Self::Warning),
+            _ => None,
+        }
+    }
+
+    /// 转换为字符串
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Operation => "operation",
+            Self::Error => "error",
+            Self::Warning => "warning",
+        }
+    }
+}
+
+impl std::fmt::Display for LogCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// 日志级别
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogLevel {
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    /// 从字符串解析
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "info" => Some(Self::Info),
+            "warn" => Some(Self::Warn),
+            "error" => Some(Self::Error),
+            _ => None,
+        }
+    }
+
+    /// 转换为字符串
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Warn => "warn",
+            Self::Error => "error",
+        }
+    }
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// 系统日志记录
+///
+/// 用于前端消息通知展示的系统日志，包含操作日志、错误日志和警告日志。
+#[derive(Debug, Clone)]
+pub struct SystemLogRecord {
+    /// 日志ID
+    pub log_id: String,
+    /// 租户ID
+    pub tenant_id: String,
+    /// 项目ID（可选，某些系统级日志不关联项目）
+    pub project_id: Option<String>,
+    /// 日志分类
+    pub category: LogCategory,
+    /// 日志级别
+    pub level: LogLevel,
+    /// 日志标题（简短描述）
+    pub title: String,
+    /// 详细消息
+    pub message: String,
+    /// 来源模块（如 'ems.ingest', 'ems.api.handlers'）
+    pub source: Option<String>,
+    /// 关联资源（如 'gateway:gw-123'）
+    pub resource: Option<String>,
+    /// 触发者（用户ID或系统）
+    pub actor: Option<String>,
+    /// 额外元数据（JSON格式）
+    pub metadata: Option<String>,
+    /// 是否已读
+    pub is_read: bool,
+    /// 创建时间（毫秒时间戳）
+    pub created_at_ms: i64,
+    /// 已读时间（毫秒时间戳）
+    pub read_at_ms: Option<i64>,
+}
+
+/// 系统日志查询参数
+#[derive(Debug, Clone, Default)]
+pub struct SystemLogQuery {
+    /// 按分类过滤
+    pub category: Option<LogCategory>,
+    /// 按级别过滤
+    pub level: Option<LogLevel>,
+    /// 仅查询未读
+    pub unread_only: bool,
+    /// 开始时间（毫秒时间戳）
+    pub from_ms: Option<i64>,
+    /// 结束时间（毫秒时间戳）
+    pub to_ms: Option<i64>,
+    /// 限制数量
+    pub limit: i64,
+}
+
+/// 未读日志统计
+#[derive(Debug, Clone, Default)]
+pub struct UnreadStats {
+    /// 未读操作日志数量
+    pub operation: i64,
+    /// 未读错误日志数量
+    pub error: i64,
+    /// 未读警告日志数量
+    pub warning: i64,
+    /// 未读总数
+    pub total: i64,
 }

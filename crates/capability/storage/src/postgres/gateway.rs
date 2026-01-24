@@ -67,6 +67,71 @@ impl GatewayStore for PgGatewayStore {
         Ok(gateways)
     }
 
+    async fn list_gateways_by_protocol_type(
+        &self,
+        ctx: &TenantContext,
+        protocol_type: &str,
+    ) -> Result<Vec<GatewayRecord>, StorageError> {
+        let project_scope = ctx.project_scope.as_deref();
+
+        let rows = match (ctx.tenant_id.as_str(), project_scope) {
+            ("", None) => {
+                sqlx::query(
+                    "select gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config::text \
+                     from gateways where protocol_type = $1",
+                )
+                .bind(protocol_type)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            ("", Some(project_id)) => {
+                sqlx::query(
+                    "select gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config::text \
+                     from gateways where protocol_type = $1 and project_id = $2",
+                )
+                .bind(protocol_type)
+                .bind(project_id)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            (tenant_id, None) => {
+                sqlx::query(
+                    "select gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config::text \
+                     from gateways where tenant_id = $1 and protocol_type = $2",
+                )
+                .bind(tenant_id)
+                .bind(protocol_type)
+                .fetch_all(&self.pool)
+                .await?
+            }
+            (tenant_id, Some(project_id)) => {
+                sqlx::query(
+                    "select gateway_id, tenant_id, project_id, name, status, protocol_type, protocol_config::text \
+                     from gateways where tenant_id = $1 and project_id = $2 and protocol_type = $3",
+                )
+                .bind(tenant_id)
+                .bind(project_id)
+                .bind(protocol_type)
+                .fetch_all(&self.pool)
+                .await?
+            }
+        };
+
+        let mut gateways = Vec::with_capacity(rows.len());
+        for row in rows {
+            gateways.push(GatewayRecord {
+                gateway_id: row.try_get("gateway_id")?,
+                tenant_id: row.try_get("tenant_id")?,
+                project_id: row.try_get("project_id")?,
+                name: row.try_get("name")?,
+                status: row.try_get("status")?,
+                protocol_type: row.try_get("protocol_type")?,
+                protocol_config: row.try_get("protocol_config")?,
+            });
+        }
+        Ok(gateways)
+    }
+
     /// 查找指定网关
     async fn find_gateway(
         &self,

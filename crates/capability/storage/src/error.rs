@@ -7,27 +7,62 @@
 
 #[derive(Debug)]
 pub struct StorageError {
-    message: String,
+    kind: StorageErrorKind,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum StorageErrorKind {
+    #[error(transparent)]
+    Database(#[from] sqlx::Error),
+    #[error(transparent)]
+    Redis(#[from] redis::RedisError),
+    #[error("{0}")]
+    Other(String),
 }
 
 impl StorageError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
-            message: message.into(),
+            kind: StorageErrorKind::Other(message.into()),
+        }
+    }
+
+    pub fn is_connection_error(&self) -> bool {
+        match &self.kind {
+            StorageErrorKind::Database(e) => matches!(
+                e,
+                sqlx::Error::Io(_) | sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed
+            ),
+            StorageErrorKind::Redis(e) => e.is_io_error() | e.is_connection_refusal(),
+            _ => false,
         }
     }
 }
 
 impl std::fmt::Display for StorageError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
+        write!(f, "{}", self.kind)
     }
 }
 
-impl std::error::Error for StorageError {}
+impl std::error::Error for StorageError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.kind.source()
+    }
+}
 
 impl From<sqlx::Error> for StorageError {
     fn from(err: sqlx::Error) -> Self {
-        Self::new(err.to_string())
+        Self {
+            kind: StorageErrorKind::Database(err),
+        }
+    }
+}
+
+impl From<redis::RedisError> for StorageError {
+    fn from(err: redis::RedisError) -> Self {
+        Self {
+            kind: StorageErrorKind::Redis(err),
+        }
     }
 }

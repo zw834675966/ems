@@ -197,7 +197,7 @@ mod tests {
             Arc::new(ems_storage::InMemoryCommandReceiptStore::new());
         let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
             Arc::new(ems_storage::InMemoryAuditLogStore::new());
-        let dispatcher = Arc::new(ems_control::NoopDispatcher::default());
+        let dispatcher = Arc::new(ems_control::NoopDispatcher);
         let command_service = Arc::new(ems_control::CommandService::new(
             command_store.clone(),
             audit_log_store.clone(),
@@ -219,6 +219,7 @@ mod tests {
             command_receipt_store,
             audit_log_store,
             collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
+            system_log_store: Arc::new(ems_storage::InMemorySystemLogStore::new()),
             command_service,
         };
 
@@ -254,7 +255,7 @@ mod tests {
             Arc::new(ems_storage::InMemoryCommandReceiptStore::new());
         let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
             Arc::new(ems_storage::InMemoryAuditLogStore::new());
-        let dispatcher = Arc::new(ems_control::NoopDispatcher::default());
+        let dispatcher = Arc::new(ems_control::NoopDispatcher);
         let command_service = Arc::new(ems_control::CommandService::new(
             command_store.clone(),
             audit_log_store.clone(),
@@ -276,6 +277,7 @@ mod tests {
             command_receipt_store,
             audit_log_store,
             collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
+            system_log_store: Arc::new(ems_storage::InMemorySystemLogStore::new()),
             command_service,
         };
         let (_, tokens) = state.auth.login("admin", "admin123").await.expect("login");
@@ -303,7 +305,7 @@ mod tests {
             Arc::new(ems_storage::InMemoryCommandReceiptStore::new());
         let audit_log_store: Arc<dyn ems_storage::AuditLogStore> =
             Arc::new(ems_storage::InMemoryAuditLogStore::new());
-        let dispatcher = Arc::new(ems_control::NoopDispatcher::default());
+        let dispatcher = Arc::new(ems_control::NoopDispatcher);
         let command_service = Arc::new(ems_control::CommandService::new(
             command_store.clone(),
             audit_log_store.clone(),
@@ -325,6 +327,7 @@ mod tests {
             command_receipt_store,
             audit_log_store,
             collection_strategy_store: Arc::new(ems_storage::InMemoryCollectionStrategyStore::new()),
+            system_log_store: Arc::new(ems_storage::InMemorySystemLogStore::new()),
             command_service,
         };
         let (_, tokens) = state.auth.login("admin", "admin123").await.expect("login");

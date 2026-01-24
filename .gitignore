@@ -3,7 +3,7 @@
 target/
 node_modules/
 mcp-shell.log
+.data/
 web/
 package.json
 pnpm-lock.yaml
-.data/

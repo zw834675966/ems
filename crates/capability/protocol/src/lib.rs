@@ -41,7 +41,7 @@
 //! ### TCP Server
 //! ```json
 //! // gateway.protocol_config
-//! { "listen_port": 9000, "frame_delimiter": "\n" }
+//! { "listenPort": 9000 }
 //! ```
 
 mod error;
@@ -51,7 +51,7 @@ mod tcp_server;
 mod types;
 
 pub use error::ProtocolError;
-pub use modbus_tcp::{ModbusTcpConfig, ModbusTcpSource};
+pub use modbus_tcp::{ModbusTcpConfig, ModbusTcpSource, PollTask, ProtocolEventHandler};
 pub use tcp_client::{TcpClientConfig, TcpClientSource};
-pub use tcp_server::{TcpServerConfig, TcpServerSource};
+pub use tcp_server::{TcpPointMapping, TcpServerConfig, TcpServerSource};
 pub use types::*;

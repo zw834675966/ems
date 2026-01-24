@@ -173,12 +173,12 @@ pub use in_memory::{
     InMemoryAuditLogStore, InMemoryCollectionStrategyStore, InMemoryCommandReceiptStore,
     InMemoryCommandStore, InMemoryDeviceStore, InMemoryGatewayStore, InMemoryMeasurementStore,
     InMemoryOnlineStore, InMemoryPointMappingStore, InMemoryPointStore, InMemoryProjectStore,
-    InMemoryRealtimeStore, InMemoryUserStore,
+    InMemoryRealtimeStore, InMemorySystemLogStore, InMemoryUserStore,
 };
 
 // 导出 PostgreSQL 存储实现类型
 pub use postgres::{
     PgAuditLogStore, PgCollectionStrategyStore, PgCommandReceiptStore, PgCommandStore,
     PgDeviceStore, PgGatewayStore, PgMeasurementStore, PgPointMappingStore, PgPointStore,
-    PgProjectStore, PgUserStore,
+    PgProjectStore, PgSystemLogStore, PgUserStore,
 };

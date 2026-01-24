@@ -56,6 +56,13 @@ fn device_online_key(tenant_id: &str, project_id: &str, device_id: &str) -> Stri
     )
 }
 
+fn resource_error_key(tenant_id: &str, project_id: &str, resource_id: &str) -> String {
+    format!(
+        "tenant:{}:project:{}:resource:{}:error",
+        tenant_id, project_id, resource_id
+    )
+}
+
 /// Redis 实时数据存储
 pub struct RedisRealtimeStore {
     client: redis::Client,
@@ -414,6 +421,79 @@ impl OnlineStore for RedisOnlineStore {
                 Err(_) => continue,
             };
             result.insert(id.clone(), payload.ts_ms);
+        }
+        Ok(result)
+    }
+
+    async fn report_resource_error(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_id: &str,
+        error: &str,
+    ) -> Result<(), StorageError> {
+        ensure_project_scope(ctx, project_id)?;
+        let mut connection = self
+            .client
+            .get_multiplexed_tokio_connection()
+            .await
+            .map_err(|err| StorageError::new(err.to_string()))?;
+        let key = resource_error_key(&ctx.tenant_id, project_id, resource_id);
+        connection
+            .set_ex::<_, _, ()>(key, error, self.ttl_seconds)
+            .await
+            .map_err(|err| StorageError::new(err.to_string()))?;
+        Ok(())
+    }
+
+    async fn get_resource_error(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        ensure_project_scope(ctx, project_id)?;
+        let mut connection = self
+            .client
+            .get_multiplexed_tokio_connection()
+            .await
+            .map_err(|err| StorageError::new(err.to_string()))?;
+        let key = resource_error_key(&ctx.tenant_id, project_id, resource_id);
+        let error: Option<String> = connection
+            .get(key)
+            .await
+            .map_err(|err| StorageError::new(err.to_string()))?;
+        Ok(error)
+    }
+
+    async fn list_resources_errors(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        resource_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, String>, StorageError> {
+        ensure_project_scope(ctx, project_id)?;
+        if resource_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let keys: Vec<String> = resource_ids
+            .iter()
+            .map(|id| resource_error_key(&ctx.tenant_id, project_id, id))
+            .collect();
+        let mut connection = self
+            .client
+            .get_multiplexed_tokio_connection()
+            .await
+            .map_err(|err| StorageError::new(err.to_string()))?;
+        let values: Vec<Option<String>> = connection
+            .mget(keys)
+            .await
+            .map_err(|err| StorageError::new(err.to_string()))?;
+        let mut result = std::collections::HashMap::new();
+        for (id, value) in resource_ids.iter().zip(values.into_iter()) {
+            if let Some(error) = value {
+                result.insert(id.clone(), error);
+            }
         }
         Ok(result)
     }

@@ -35,6 +35,14 @@ pub struct AppConfig {
     pub mqtt_use_shared_subscription: bool,
     /// 共享订阅组名
     pub mqtt_shared_group: String,
+    /// 是否启用 MQTT TLS 加密连接
+    pub mqtt_use_tls: bool,
+    /// MQTT CA 证书路径（用于验证服务器证书）
+    pub mqtt_ca_cert_path: Option<String>,
+    /// MQTT 客户端证书路径（用于 mTLS 双向认证）
+    pub mqtt_client_cert_path: Option<String>,
+    /// MQTT 客户端私钥路径（用于 mTLS 双向认证）
+    pub mqtt_client_key_path: Option<String>,
     pub ingest_enabled: bool,
     pub control_enabled: bool,
     pub control_dispatch_max_retries: u64,
@@ -44,6 +52,8 @@ pub struct AppConfig {
     pub jwt_access_ttl_seconds: u64,
     pub jwt_refresh_ttl_seconds: u64,
     pub require_timescale: bool,
+    /// 日志格式：text（默认）或 json
+    pub log_format: String,
 }
 
 impl AppConfig {
@@ -56,8 +66,8 @@ impl AppConfig {
         let jwt_access_ttl_seconds = read_u64("EMS_JWT_ACCESS_TTL_SECONDS")?;
         let jwt_refresh_ttl_seconds = read_u64("EMS_JWT_REFRESH_TTL_SECONDS")?;
         let http_addr = env::var("EMS_HTTP_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
-        let redis_url = env::var("EMS_REDIS_URL")
-            .unwrap_or_else(|_| "redis://default:admin123@localhost:6379".to_string());
+        let redis_url =
+            env::var("EMS_REDIS_URL").map_err(|_| ConfigError::Missing("EMS_REDIS_URL".to_string()))?;
         let redis_last_value_ttl_seconds =
             read_optional_u64("EMS_REDIS_LAST_VALUE_TTL_SECONDS")?.filter(|value| *value > 0);
         let redis_online_ttl_seconds = read_u64_with_default("EMS_REDIS_ONLINE_TTL_SECONDS", 60)?;
@@ -83,6 +93,10 @@ impl AppConfig {
             read_bool_with_default("EMS_MQTT_USE_SHARED_SUBSCRIPTION", false);
         let mqtt_shared_group =
             env::var("EMS_MQTT_SHARED_GROUP").unwrap_or_else(|_| "ems-ingest".to_string());
+        let mqtt_use_tls = read_bool_with_default("EMS_MQTT_USE_TLS", false);
+        let mqtt_ca_cert_path = read_optional("EMS_MQTT_CA_CERT_PATH");
+        let mqtt_client_cert_path = read_optional("EMS_MQTT_CLIENT_CERT_PATH");
+        let mqtt_client_key_path = read_optional("EMS_MQTT_CLIENT_KEY_PATH");
         let ingest_enabled = read_bool_with_default("EMS_INGEST", false);
         let control_enabled = read_bool_with_default("EMS_CONTROL", false);
         let control_dispatch_max_retries =
@@ -92,6 +106,7 @@ impl AppConfig {
         let control_receipt_timeout_seconds =
             read_u64_with_default("EMS_CONTROL_RECEIPT_TIMEOUT_SECONDS", 30)?;
         let require_timescale = read_bool_with_default("EMS_REQUIRE_TIMESCALE", false);
+        let log_format = env::var("EMS_LOG_FORMAT").unwrap_or_else(|_| "text".to_string());
 
         Ok(Self {
             http_addr,
@@ -113,6 +128,10 @@ impl AppConfig {
             mqtt_receipt_qos,
             mqtt_use_shared_subscription,
             mqtt_shared_group,
+            mqtt_use_tls,
+            mqtt_ca_cert_path,
+            mqtt_client_cert_path,
+            mqtt_client_key_path,
             ingest_enabled,
             control_enabled,
             control_dispatch_max_retries,
@@ -122,6 +141,7 @@ impl AppConfig {
             jwt_access_ttl_seconds,
             jwt_refresh_ttl_seconds,
             require_timescale,
+            log_format,
         })
     }
 }

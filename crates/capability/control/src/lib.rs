@@ -75,6 +75,14 @@ pub struct MqttDispatcherConfig {
     /// - on：`{prefix}/{tenant}/{project}/{target}/{command_id}`（target 可包含多段）
     pub include_target_in_topic: bool,
     pub qos: u8,
+    /// 是否启用 TLS 加密连接
+    pub use_tls: bool,
+    /// CA 证书路径
+    pub ca_cert_path: Option<String>,
+    /// 客户端证书路径（mTLS）
+    pub client_cert_path: Option<String>,
+    /// 客户端私钥路径（mTLS）
+    pub client_key_path: Option<String>,
 }
 
 /// MQTT Dispatcher 实现（发布命令）。
@@ -96,6 +104,23 @@ impl MqttDispatcher {
         if let (Some(username), Some(password)) = (config.username, config.password) {
             options.set_credentials(username, password);
         }
+
+        // 配置 TLS 传输层（如果启用）
+        if config.use_tls {
+            match build_tls_config(
+                config.ca_cert_path.as_deref(),
+                config.client_cert_path.as_deref(),
+                config.client_key_path.as_deref(),
+            ) {
+                Ok(tls_config) => {
+                    options.set_transport(rumqttc::Transport::tls_with_config(tls_config));
+                }
+                Err(err) => {
+                    return Err(ControlError::Dispatch(format!("TLS config error: {}", err)));
+                }
+            }
+        }
+
         let (client, mut eventloop) = AsyncClient::new(options, 10);
         let handle = tokio::spawn(async move {
             loop {
@@ -173,6 +198,14 @@ pub struct MqttReceiptListenerConfig {
     pub password: Option<String>,
     pub receipt_topic_prefix: String,
     pub qos: u8,
+    /// 是否启用 TLS 加密连接
+    pub use_tls: bool,
+    /// CA 证书路径
+    pub ca_cert_path: Option<String>,
+    /// 客户端证书路径（mTLS）
+    pub client_cert_path: Option<String>,
+    /// 客户端私钥路径（mTLS）
+    pub client_key_path: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -205,6 +238,24 @@ pub fn spawn_receipt_listener(
         if let (Some(username), Some(password)) = (config.username, config.password) {
             options.set_credentials(username, password);
         }
+
+        // 配置 TLS 传输层（如果启用）
+        if config.use_tls {
+            match build_tls_config(
+                config.ca_cert_path.as_deref(),
+                config.client_cert_path.as_deref(),
+                config.client_key_path.as_deref(),
+            ) {
+                Ok(tls_config) => {
+                    options.set_transport(rumqttc::Transport::tls_with_config(tls_config));
+                }
+                Err(err) => {
+                    warn!(target: "ems.control", "mqtt receipt TLS config error: {}", err);
+                    return;
+                }
+            }
+        }
+
         let (client, mut eventloop) = AsyncClient::new(options, 10);
         let topic = format!("{}/#", config.receipt_topic_prefix.trim_end_matches('/'));
         if let Err(err) = client.subscribe(topic, qos_from_u8(config.qos)).await {
@@ -680,9 +731,151 @@ fn stable_audit_id_for_receipt(receipt_id: &str) -> String {
     uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, name.as_bytes()).to_string()
 }
 
+/// 构建 TLS 配置
+fn build_tls_config(
+    ca_cert_path: Option<&str>,
+    client_cert_path: Option<&str>,
+    client_key_path: Option<&str>,
+) -> Result<rumqttc::TlsConfiguration, String> {
+    use std::io::BufReader;
+
+    let ca_certs = if let Some(ca_path) = ca_cert_path {
+        let ca_file = std::fs::File::open(ca_path)
+            .map_err(|e| format!("failed to open CA cert '{}': {}", ca_path, e))?;
+        let mut reader = BufReader::new(ca_file);
+        rustls_pemfile::certs(&mut reader)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("failed to parse CA cert: {}", e))?
+    } else {
+        Vec::new()
+    };
+
+    let client_auth = match (client_cert_path, client_key_path) {
+        (Some(cert_path), Some(key_path)) => {
+            let cert_file = std::fs::File::open(cert_path)
+                .map_err(|e| format!("failed to open client cert '{}': {}", cert_path, e))?;
+            let mut cert_reader = BufReader::new(cert_file);
+            let client_certs = rustls_pemfile::certs(&mut cert_reader)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("failed to parse client cert: {}", e))?;
+
+            let key_file = std::fs::File::open(key_path)
+                .map_err(|e| format!("failed to open client key '{}': {}", key_path, e))?;
+            let mut key_reader = BufReader::new(key_file);
+            let client_key = rustls_pemfile::private_key(&mut key_reader)
+                .map_err(|e| format!("failed to parse client key: {}", e))?
+                .ok_or_else(|| "no private key found in file".to_string())?;
+
+            Some((client_certs, client_key))
+        }
+        _ => None,
+    };
+
+    Ok(rumqttc::TlsConfiguration::Rustls(std::sync::Arc::new(
+        build_rustls_client_config(ca_certs, client_auth)?,
+    )))
+}
+
+/// 构建 rustls ClientConfig
+fn build_rustls_client_config(
+    ca_certs: Vec<rustls_pki_types::CertificateDer<'static>>,
+    client_auth: Option<(
+        Vec<rustls_pki_types::CertificateDer<'static>>,
+        rustls_pki_types::PrivateKeyDer<'static>,
+    )>,
+) -> Result<rustls::ClientConfig, String> {
+    let mut root_store = rustls::RootCertStore::empty();
+
+    for cert in ca_certs {
+        root_store
+            .add(cert)
+            .map_err(|e| format!("failed to add CA cert: {}", e))?;
+    }
+
+    if root_store.is_empty() {
+        let native_certs = rustls_native_certs::load_native_certs()
+            .map_err(|e| format!("could not load platform certs: {}", e))?;
+        for cert in native_certs {
+            root_store.add(cert).ok();
+        }
+    }
+
+    let builder = rustls::ClientConfig::builder().with_root_certificates(root_store);
+
+    let config = if let Some((certs, key)) = client_auth {
+        builder
+            .with_client_auth_cert(certs, key)
+            .map_err(|e| format!("failed to configure client auth: {}", e))?
+    } else {
+        builder.with_no_client_auth()
+    };
+
+    Ok(config)
+}
+
+async fn dispatch_with_retry(
+    dispatcher: Arc<dyn CommandDispatcher>,
+    dispatch: &CommandDispatch,
+    max_retries: u64,
+    backoff_ms: u64,
+) -> Result<(), ControlError> {
+    let mut attempt = 0u64;
+    loop {
+        match dispatcher.dispatch(dispatch).await {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                attempt += 1;
+                if attempt > max_retries {
+                    return Err(err);
+                }
+                if backoff_ms > 0 {
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Default)]
+    struct FailingDispatcher {
+        remaining_failures: AtomicUsize,
+        calls: AtomicUsize,
+    }
+
+    impl FailingDispatcher {
+        fn new(failures: usize) -> Self {
+            Self {
+                remaining_failures: AtomicUsize::new(failures),
+                calls: AtomicUsize::new(0),
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl CommandDispatcher for FailingDispatcher {
+        async fn dispatch(&self, _command: &CommandDispatch) -> Result<(), ControlError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let remaining = self.remaining_failures.load(Ordering::SeqCst);
+            if remaining > 0 {
+                self.remaining_failures
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                        value.checked_sub(1)
+                    })
+                    .ok();
+                return Err(ControlError::Dispatch("simulated failure".to_string()));
+            }
+            Ok(())
+        }
+    }
 
     #[test]
     fn receipt_topic_scope_allows_extra_segments() {
@@ -710,27 +903,72 @@ mod tests {
         assert!(parsed.message.is_none());
         assert!(parsed.ts_ms.is_none());
     }
-}
 
-async fn dispatch_with_retry(
-    dispatcher: Arc<dyn CommandDispatcher>,
-    dispatch: &CommandDispatch,
-    max_retries: u64,
-    backoff_ms: u64,
-) -> Result<(), ControlError> {
-    let mut attempt = 0u64;
-    loop {
-        match dispatcher.dispatch(dispatch).await {
-            Ok(()) => return Ok(()),
-            Err(err) => {
-                attempt += 1;
-                if attempt > max_retries {
-                    return Err(err);
-                }
-                if backoff_ms > 0 {
-                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-                }
-            }
-        }
+    #[tokio::test]
+    async fn dispatch_with_retry_succeeds_after_retry() {
+        let dispatcher = Arc::new(FailingDispatcher::new(1));
+        let command = CommandDispatch {
+            command_id: "cmd-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            project_id: "project-1".to_string(),
+            target: "demo".to_string(),
+            payload: "{}".to_string(),
+            issued_at_ms: 1,
+        };
+        let result = dispatch_with_retry(dispatcher.clone(), &command, 2, 0).await;
+        assert!(result.is_ok());
+        assert_eq!(dispatcher.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn dispatch_with_retry_fails_after_max_retries() {
+        let dispatcher = Arc::new(FailingDispatcher::new(3));
+        let command = CommandDispatch {
+            command_id: "cmd-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            project_id: "project-1".to_string(),
+            target: "demo".to_string(),
+            payload: "{}".to_string(),
+            issued_at_ms: 1,
+        };
+        let result = dispatch_with_retry(dispatcher.clone(), &command, 1, 0).await;
+        assert!(result.is_err());
+        assert_eq!(dispatcher.calls(), 2);
+    }
+
+    #[test]
+    fn mqtt_command_payload_wraps_json_payload() {
+        let command = CommandDispatch {
+            command_id: "cmd-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            project_id: "project-1".to_string(),
+            target: "demo".to_string(),
+            payload: "{\"value\":42}".to_string(),
+            issued_at_ms: 123,
+        };
+        let payload = mqtt_command_payload(&command).expect("payload");
+        let envelope: serde_json::Value = serde_json::from_slice(&payload).expect("json");
+        assert_eq!(envelope["commandId"], "cmd-1");
+        assert_eq!(envelope["payload"]["value"], 42);
+    }
+
+    #[test]
+    fn mqtt_command_payload_wraps_plain_text_payload() {
+        let command = CommandDispatch {
+            command_id: "cmd-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            project_id: "project-1".to_string(),
+            target: "demo".to_string(),
+            payload: "raw".to_string(),
+            issued_at_ms: 123,
+        };
+        let payload = mqtt_command_payload(&command).expect("payload");
+        let envelope: serde_json::Value = serde_json::from_slice(&payload).expect("json");
+        assert_eq!(envelope["payload"], "raw");
+    }
+
+    #[test]
+    fn normalize_status_maps_unknown_to_failed() {
+        assert_eq!(normalize_status("pending"), "failed");
     }
 }

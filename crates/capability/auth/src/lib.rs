@@ -5,7 +5,7 @@ mod password;
 
 use async_trait::async_trait;
 use domain::TenantContext;
-use ems_storage::{UserRecord, UserStore};
+use ems_storage::{StorageError, UserRecord, UserStore};
 use std::sync::Arc;
 
 pub use jwt::JwtManager;
@@ -22,6 +22,18 @@ pub enum AuthError {
     TokenInvalid,
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("service unavailable: {0}")]
+    ServiceUnavailable(String),
+}
+
+impl AuthError {
+    pub fn from_storage(err: StorageError) -> Self {
+        if err.is_connection_error() {
+            AuthError::ServiceUnavailable(err.to_string())
+        } else {
+            AuthError::Internal(err.to_string())
+        }
+    }
 }
 
 /// 登录/刷新返回的 token 结构。
@@ -55,7 +67,7 @@ impl AuthService {
             .user_store
             .find_by_username(&ctx, username)
             .await
-            .map_err(|err| AuthError::Internal(err.to_string()))?
+            .map_err(AuthError::from_storage)?
             .ok_or(AuthError::InvalidCredentials)?;
         let check = verify_password_and_maybe_upgrade(&user.password, password)?;
         if !check.verified {
@@ -67,7 +79,7 @@ impl AuthService {
                 .user_store
                 .update_password_hash(&ctx, &user.user_id, &password_hash)
                 .await
-                .map_err(|err| AuthError::Internal(err.to_string()))?;
+                .map_err(AuthError::from_storage)?;
             if !updated {
                 return Err(AuthError::Internal(
                     "password migration update failed".to_string(),
@@ -80,7 +92,7 @@ impl AuthService {
             .user_store
             .set_refresh_jti(&ctx, &user.user_id, Some(&tokens.refresh_jti))
             .await
-            .map_err(|err| AuthError::Internal(err.to_string()))?;
+            .map_err(AuthError::from_storage)?;
         if !updated {
             return Err(AuthError::Internal(
                 "refresh token binding update failed".to_string(),
@@ -101,7 +113,7 @@ impl AuthService {
             .user_store
             .get_refresh_jti(&ctx, &ctx.user_id)
             .await
-            .map_err(|err| AuthError::Internal(err.to_string()))?;
+            .map_err(AuthError::from_storage)?;
         if stored.as_deref() != Some(jti.as_str()) {
             return Err(AuthError::TokenInvalid);
         }
@@ -111,7 +123,7 @@ impl AuthService {
             .user_store
             .set_refresh_jti(&ctx, &ctx.user_id, Some(&tokens.refresh_jti))
             .await
-            .map_err(|err| AuthError::Internal(err.to_string()))?;
+            .map_err(AuthError::from_storage)?;
         if !updated {
             return Err(AuthError::Internal(
                 "refresh token rotation update failed".to_string(),

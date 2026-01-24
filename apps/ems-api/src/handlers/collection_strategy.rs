@@ -256,18 +256,86 @@ pub async fn test_point(
         Err(err) => return storage_error(err),
     };
 
-    // TODO: 实现真正的协议测试
-    // 目前返回模拟结果，后续集成 protocol crate
-    let start = std::time::Instant::now();
-
-    // 模拟测试结果
-    let result = PointTestResultDto {
-        success: true,
-        point_id: point.point_id,
-        value: Some("42.5".to_string()), // 模拟值
-        error: None,
-        latency_ms: start.elapsed().as_millis() as i64,
+    // 获取设备信息
+    let device = match state
+        .device_store
+        .find_device(&ctx, &path.project_id, &point.device_id)
+        .await
+    {
+        Ok(Some(d)) => d,
+        Ok(None) => return bad_request_error("device not found"),
+        Err(err) => return storage_error(err),
     };
 
+    // 获取网关信息
+    let gateway = match state
+        .gateway_store
+        .find_gateway(&ctx, &path.project_id, &device.gateway_id)
+        .await
+    {
+        Ok(Some(g)) => g,
+        Ok(None) => return bad_request_error("gateway not found"),
+        Err(err) => return storage_error(err),
+    };
+
+    let start = std::time::Instant::now();
+    let mut result = PointTestResultDto {
+        success: false,
+        point_id: point.point_id.clone(),
+        value: None,
+        error: None,
+        latency_ms: 0,
+    };
+
+    if gateway.protocol_type == "modbus_tcp" {
+        use ems_protocol::ModbusTcpSource;
+
+        let protocol_config = gateway.protocol_config.as_deref().unwrap_or("{}");
+        let config_res = ModbusTcpSource::from_json(protocol_config);
+        match config_res {
+            Ok(mut source) => {
+                let address_config = device.address_config.as_deref().unwrap_or("{}");
+                let protocol_detail = point.protocol_detail.as_deref().unwrap_or("{}");
+
+                let task_res = source.add_task_from_config(
+                    &ctx.tenant_id,
+                    &point.project_id,
+                    &gateway.gateway_id,
+                    &device.device_id,
+                    &point.point_id,
+                    address_config,
+                    protocol_detail,
+                    None,
+                    None,
+                );
+
+                match task_res {
+                    Ok(_) => match source.test_once().await {
+                        Ok(events) => {
+                            if let Some(event) = events.first() {
+                                result.success = true;
+                                result.value = Some(event.value.to_string());
+                            } else {
+                                result.error = Some("No data received".to_string());
+                            }
+                        }
+                        Err(e) => {
+                            result.error = Some(format!("Connection Error: {}", e));
+                        }
+                    },
+                    Err(e) => {
+                        result.error = Some(format!("Invalid configuration: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                result.error = Some(format!("Invalid gateway config: {}", e));
+            }
+        }
+    } else {
+        result.error = Some(format!("Unsupported protocol: {}", gateway.protocol_type));
+    }
+
+    result.latency_ms = start.elapsed().as_millis() as i64;
     (StatusCode::OK, Json(ApiResponse::success(result))).into_response()
 }
