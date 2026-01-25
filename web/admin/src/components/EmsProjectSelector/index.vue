@@ -2,7 +2,11 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { listProjects, type ProjectDto } from "@/api/ems/projects";
-import { clearEmsProjectId, loadEmsProjectId, saveEmsProjectId } from "@/utils/emsProject";
+import {
+  clearEmsProjectId,
+  loadEmsProjectId,
+  saveEmsProjectId
+} from "@/utils/emsProject";
 
 const props = defineProps<{
   modelValue: string;
@@ -55,7 +59,10 @@ const pickDefault = () => {
     projectId.value = saved;
     return;
   }
-  if (projectId.value && projects.value.some(p => p.projectId === projectId.value)) {
+  if (
+    projectId.value &&
+    projects.value.some(p => p.projectId === projectId.value)
+  ) {
     saveEmsProjectId(projectId.value);
     return;
   }
@@ -119,11 +126,17 @@ onMounted(async () => {
       />
     </el-select>
     <el-button :loading="loading" @click="load">刷新项目</el-button>
-    <el-button :disabled="!projectId" @click="copyProjectId">复制 projectId</el-button>
-    <el-button :disabled="!projectId" type="danger" plain @click="clearSelection">
+    <el-button :disabled="!projectId" @click="copyProjectId"
+      >复制 projectId</el-button
+    >
+    <el-button
+      :disabled="!projectId"
+      type="danger"
+      plain
+      @click="clearSelection"
+    >
       清空
     </el-button>
     <span v-if="error" class="text-red-500 text-sm">{{ error }}</span>
   </div>
 </template>
-

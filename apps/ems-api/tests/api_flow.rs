@@ -1,4 +1,8 @@
-use axum::{Router, body::Body, http::{Request, StatusCode}};
+use axum::{
+    Router,
+    body::Body,
+    http::{Request, StatusCode},
+};
 use ems_api::{AppState, create_api_router};
 use ems_auth::{AuthService, JwtManager};
 use ems_control::{CommandService, NoopDispatcher};

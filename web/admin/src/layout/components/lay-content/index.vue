@@ -116,13 +116,13 @@ const transitionMain = defineComponent({
           <template #default="{ Comp, fullPath, frameInfo }">
             <el-scrollbar
               v-if="fixedHeader"
-                :wrap-style="{
-                  display: 'flex',
-                  'flex-wrap': 'wrap',
-                  'max-width': getMainWidth,
-                  margin: '0 auto',
-                  transition: 'all 300ms cubic-bezier(0.16, 1, 0.3, 1)'
-                }"
+              :wrap-style="{
+                display: 'flex',
+                'flex-wrap': 'wrap',
+                'max-width': getMainWidth,
+                margin: '0 auto',
+                transition: 'all 300ms cubic-bezier(0.16, 1, 0.3, 1)'
+              }"
               :view-style="{
                 display: 'flex',
                 flex: 'auto',
@@ -209,6 +209,6 @@ const transitionMain = defineComponent({
 
 .main-content {
   margin: var(--space-6);
-  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 </style>

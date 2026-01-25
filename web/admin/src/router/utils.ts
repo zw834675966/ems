@@ -322,7 +322,10 @@ function addAsyncRoutes(arrRoutes: Array<RouteRecordRaw>) {
       v.name = (v.children[0].name as string) + "Parent";
     if (typeof v.component === "string" && v.component === "Layout") {
       v.component = Layout;
-    } else if (typeof v.component === "string" && v.component === "ParentView") {
+    } else if (
+      typeof v.component === "string" &&
+      v.component === "ParentView"
+    ) {
       v.component = ParentView;
     } else if (v.meta?.frameSrc) {
       v.component = IFrame;

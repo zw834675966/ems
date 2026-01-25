@@ -13,7 +13,12 @@ import { listDevices, type DeviceDto } from "@/api/ems/devices";
 import { listGateways, type GatewayDto } from "@/api/ems/gateways";
 import { getRealtime, type RealtimeValueDto } from "@/api/ems/realtime";
 import EmsProjectSelector from "@/components/EmsProjectSelector/index.vue";
-import { buildProtocolDetail, buildTcpProtocolDetail, parseProtocolDetail, parseTcpProtocolDetail } from "@/utils/protocol";
+import {
+  buildProtocolDetail,
+  buildTcpProtocolDetail,
+  parseProtocolDetail,
+  parseTcpProtocolDetail
+} from "@/utils/protocol";
 
 defineOptions({
   name: "EmsPointMappings"
@@ -58,13 +63,13 @@ const gatewayOptions = computed(() =>
 // 根据选中的网关过滤点位
 const filteredPoints = computed(() => {
   if (!form.value.gatewayId) return points.value;
-  
+
   // 找到该网关下的所有设备
   const gatewayDevices = devices.value.filter(
     d => d.gatewayId === form.value.gatewayId
   );
   const deviceIds = new Set(gatewayDevices.map(d => d.deviceId));
-  
+
   // 过滤出这些设备下的点位
   return points.value.filter(p => deviceIds.has(p.deviceId));
 });
@@ -73,8 +78,8 @@ const pointOptions = computed(() =>
   filteredPoints.value.map(item => {
     // 找到点位所属的设备
     const device = devices.value.find(d => d.deviceId === item.deviceId);
-    const deviceName = device?.name || '未知设备';
-    
+    const deviceName = device?.name || "未知设备";
+
     return {
       label: `${deviceName} - ${item.key}`,
       value: item.pointId
@@ -95,13 +100,14 @@ const selectedGateway = computed(() =>
   gateways.value.find(g => g.gatewayId === selectedDevice.value?.gatewayId)
 );
 
-const isModbusTcp = computed(() =>
-  selectedGateway.value?.protocolType === "modbus_tcp"
+const isModbusTcp = computed(
+  () => selectedGateway.value?.protocolType === "modbus_tcp"
 );
 
-const isTcp = computed(() =>
-  selectedGateway.value?.protocolType === "tcp_server" ||
-  selectedGateway.value?.protocolType === "tcp_client"
+const isTcp = computed(
+  () =>
+    selectedGateway.value?.protocolType === "tcp_server" ||
+    selectedGateway.value?.protocolType === "tcp_client"
 );
 
 const effectiveSourceType = computed(() => {
@@ -111,7 +117,8 @@ const effectiveSourceType = computed(() => {
 });
 
 const sourceTypeHint = computed(() => {
-  if (isModbusTcp.value) return "当前点位所属网关为 Modbus TCP，因此 sourceType 固定为 modbus";
+  if (isModbusTcp.value)
+    return "当前点位所属网关为 Modbus TCP，因此 sourceType 固定为 modbus";
   if (isTcp.value) return "当前点位所属网关为 TCP，因此 sourceType 固定为 tcp";
   return "当前点位所属网关为 MQTT（或未选择），sourceType 默认为 mqtt";
 });
@@ -161,12 +168,8 @@ const fetchList = async () => {
   loading.value = true;
   try {
     // 同时刷新点位、设备和网关列表，确保过滤逻辑正常工作
-    await Promise.all([
-      refreshPoints(),
-      refreshDevices(),
-      refreshGateways()
-    ]);
-    
+    await Promise.all([refreshPoints(), refreshDevices(), refreshGateways()]);
+
     const res = await listPointMappings(pid);
     if (!res.success) {
       error.value = res.error?.message ?? "加载失败";
@@ -185,16 +188,16 @@ type TableRow = {
   id: string; // 唯一ID
   name: string; // 显示名称
   type: "gateway" | "device" | "point"; // 节点类型
-  
+
   // 原始数据引用
   gateway?: GatewayDto;
   device?: DeviceDto;
   point?: PointDto;
   mapping?: PointMappingDto;
-  
+
   // 树形结构
   children?: TableRow[];
-  
+
   // 映射详情字段
   sourceId?: string;
   sourceType?: string;
@@ -215,20 +218,20 @@ const modbusRegisterCountMax = computed(() => {
 // 构建工程树
 const buildTree = () => {
   const tree: TableRow[] = [];
-  
+
   // 1. 遍历网关
   gateways.value.forEach(gw => {
     // 查找网关下的设备
     const gwDevices = devices.value.filter(d => d.gatewayId === gw.gatewayId);
-    
+
     const deviceNodes: TableRow[] = gwDevices.map(dev => {
       // 查找设备下的点位
       const devPoints = points.value.filter(p => p.deviceId === dev.deviceId);
-      
+
       const pointNodes: TableRow[] = devPoints.map(pt => {
         // 查找点位的映射
         const mapping = items.value.find(m => m.pointId === pt.pointId);
-        
+
         return {
           id: `point_${pt.pointId}`,
           name: pt.key,
@@ -244,17 +247,17 @@ const buildTree = () => {
           protocolDetail: mapping?.protocolDetail
         };
       });
-      
+
       return {
         id: `device_${dev.deviceId}`,
         name: dev.name,
         type: "device",
         device: dev,
-        children: pointNodes,
+        children: pointNodes
         // 其他字段置空
       };
     });
-    
+
     // 只有当网关下有设备或本来就是空网关时才显示
     tree.push({
       id: `gateway_${gw.gatewayId}`,
@@ -264,18 +267,20 @@ const buildTree = () => {
       children: deviceNodes
     });
   });
-  
+
   // 过滤树：如果选择了网关，只显示该网关
   if (form.value.gatewayId) {
-    return tree.filter(node => node.gateway?.gatewayId === form.value.gatewayId);
+    return tree.filter(
+      node => node.gateway?.gatewayId === form.value.gatewayId
+    );
   }
-  
+
   return tree;
 };
 
 // 监听数据变化重建树
 watch(
-  [gateways, devices, points, items, () => form.value.gatewayId], 
+  [gateways, devices, points, items, () => form.value.gatewayId],
   () => {
     treeData.value = buildTree();
   },
@@ -284,7 +289,7 @@ watch(
 
 watch(
   () => form.value.modbusFunctionCode,
-  (fc) => {
+  fc => {
     if (fc === 1 || fc === 2) {
       form.value.modbusDataType = "bool";
       if (form.value.modbusRegisterCount > 2000) {
@@ -348,8 +353,14 @@ const submit = async () => {
     error.value = "TCP 点位需要先在设备中配置 addressConfig.devId（DEV_ID）";
     return;
   }
-  if (sourceType === "modbus" && (modbusDeviceUnitId === "" || modbusDeviceUnitId === null || modbusDeviceUnitId === undefined)) {
-    error.value = "Modbus 点位需要先在设备中配置 addressConfig.unitId（Unit ID）";
+  if (
+    sourceType === "modbus" &&
+    (modbusDeviceUnitId === "" ||
+      modbusDeviceUnitId === null ||
+      modbusDeviceUnitId === undefined)
+  ) {
+    error.value =
+      "Modbus 点位需要先在设备中配置 addressConfig.unitId（Unit ID）";
     return;
   }
 
@@ -367,11 +378,19 @@ const submit = async () => {
 
   let protocolDetail: string | undefined;
   if (sourceType === "modbus") {
-    if ((form.value.modbusFunctionCode === 1 || form.value.modbusFunctionCode === 2) && form.value.modbusDataType !== "bool") {
+    if (
+      (form.value.modbusFunctionCode === 1 ||
+        form.value.modbusFunctionCode === 2) &&
+      form.value.modbusDataType !== "bool"
+    ) {
       error.value = "Modbus 功能码 01/02 的 dataType 必须为 bool";
       return;
     }
-    if ((form.value.modbusFunctionCode === 3 || form.value.modbusFunctionCode === 4) && form.value.modbusDataType === "bool") {
+    if (
+      (form.value.modbusFunctionCode === 3 ||
+        form.value.modbusFunctionCode === 4) &&
+      form.value.modbusDataType === "bool"
+    ) {
       error.value = "Modbus 功能码 03/04 的 dataType 不能为 bool";
       return;
     }
@@ -379,7 +398,10 @@ const submit = async () => {
       error.value = `Modbus registerCount/quantity 不能超过 ${modbusRegisterCountMax.value}`;
       return;
     }
-    if (["int32", "uint32", "float32"].includes(form.value.modbusDataType) && !form.value.modbusWordOrder) {
+    if (
+      ["int32", "uint32", "float32"].includes(form.value.modbusDataType) &&
+      !form.value.modbusWordOrder
+    ) {
       error.value = "Modbus 32-bit 点位必须设置 wordOrder";
       return;
     }
@@ -413,12 +435,13 @@ const submit = async () => {
       payload.offset = form.value.offset;
     }
     payload.protocolDetail = protocolDetail;
-    
+
     const res = currentSourceId.value
       ? await updatePointMapping(pid, currentSourceId.value, payload)
       : await createPointMapping(pid, payload);
     if (!res.success) {
-      error.value = res.error?.message ?? (currentSourceId.value ? "更新失败" : "创建失败");
+      error.value =
+        res.error?.message ?? (currentSourceId.value ? "更新失败" : "创建失败");
       return;
     }
     ElMessage.success(currentSourceId.value ? "更新成功" : "创建成功");
@@ -434,7 +457,9 @@ const submit = async () => {
 const handleDeleteMapping = async () => {
   const pid = projectId.value.trim();
   if (!pid || !currentSourceId.value) return;
-  await ElMessageBox.confirm("确认删除该点位映射？", "提示", { type: "warning" }).catch(() => false);
+  await ElMessageBox.confirm("确认删除该点位映射？", "提示", {
+    type: "warning"
+  }).catch(() => false);
   try {
     const res = await deletePointMapping(pid, currentSourceId.value);
     if (!res.success) {
@@ -515,73 +540,111 @@ watch(
         <div class="flex items-center justify-between flex-wrap gap-2">
           <div>
             <div class="text-base font-medium">点位映射</div>
-            <div class="text-xs text-gray-500">Point ↔ Source 映射（MQTT / Modbus / TCP）</div>
+            <div class="text-xs text-gray-500">
+              Point ↔ Source 映射（MQTT / Modbus / TCP）
+            </div>
           </div>
           <EmsProjectSelector v-model="projectId" @change="fetchList" />
         </div>
       </template>
       <div class="flex items-center gap-2">
-        <el-button type="primary" :loading="loading" @click="fetchList">刷新列表</el-button>
+        <el-button type="primary" :loading="loading" @click="fetchList"
+          >刷新列表</el-button
+        >
         <span v-if="error" class="text-red-500">{{ error }}</span>
       </div>
-      <el-table 
-        class="mt-4" 
-        :data="treeData" 
-        border 
+      <el-table
+        class="mt-4"
+        :data="treeData"
+        border
         row-key="id"
         default-expand-all
         :tree-props="{ children: 'children' }"
       >
-        <el-table-column prop="name" label="名称 (网关/设备/点位)" min-width="300">
+        <el-table-column
+          prop="name"
+          label="名称 (网关/设备/点位)"
+          min-width="300"
+        >
           <template #default="{ row }">
             <div class="flex items-center gap-2">
-               <!-- 图标区分类型 -->
-               <el-tag v-if="row.type === 'gateway'" type="success" size="small">GW</el-tag>
-               <el-tag v-else-if="row.type === 'device'" type="warning" size="small">DEV</el-tag>
-               <el-tag v-else-if="row.type === 'point'" size="small">PT</el-tag>
-               <span :class="{'font-bold': row.type === 'gateway', 'font-medium': row.type === 'device'}">
-                 {{ row.name }}
-               </span>
-               <span v-if="row.type === 'point'" class="text-gray-400 text-xs ml-2">
-                 ({{ row.point?.dataType }})
-               </span>
+              <!-- 图标区分类型 -->
+              <el-tag v-if="row.type === 'gateway'" type="success" size="small"
+                >GW</el-tag
+              >
+              <el-tag
+                v-else-if="row.type === 'device'"
+                type="warning"
+                size="small"
+                >DEV</el-tag
+              >
+              <el-tag v-else-if="row.type === 'point'" size="small">PT</el-tag>
+              <span
+                :class="{
+                  'font-bold': row.type === 'gateway',
+                  'font-medium': row.type === 'device'
+                }"
+              >
+                {{ row.name }}
+              </span>
+              <span
+                v-if="row.type === 'point'"
+                class="text-gray-400 text-xs ml-2"
+              >
+                ({{ row.point?.dataType }})
+              </span>
             </div>
           </template>
         </el-table-column>
-        
+
         <el-table-column prop="sourceType" label="类型/协议" min-width="120">
           <template #default="{ row }">
             <span v-if="row.type === 'point'">
-              {{ row.sourceType || '-' }}
+              {{ row.sourceType || "-" }}
             </span>
             <span v-else-if="row.type === 'gateway'">
               {{ row.gateway?.protocolType }}
             </span>
           </template>
         </el-table-column>
-        
+
         <el-table-column prop="address" label="映射地址 / 配置" min-width="250">
-           <template #default="{ row }">
-             <div v-if="row.type === 'point'">
-               <div v-if="row.address">
-                 MQTT: {{ row.address }}
-               </div>
-               <div v-if="row.protocolDetail">
-                 <code class="text-xs bg-gray-50 px-1 rounded block truncate max-w-[300px]" :title="row.protocolDetail">
-                   {{ row.protocolDetail }}
-                 </code>
-               </div>
-               <span v-if="!row.address && !row.protocolDetail" class="text-gray-300">未配置</span>
-             </div>
-           </template>
+          <template #default="{ row }">
+            <div v-if="row.type === 'point'">
+              <div v-if="row.address">MQTT: {{ row.address }}</div>
+              <div v-if="row.protocolDetail">
+                <code
+                  class="text-xs bg-gray-50 px-1 rounded block truncate max-w-[300px]"
+                  :title="row.protocolDetail"
+                >
+                  {{ row.protocolDetail }}
+                </code>
+              </div>
+              <span
+                v-if="!row.address && !row.protocolDetail"
+                class="text-gray-300"
+                >未配置</span
+              >
+            </div>
+          </template>
         </el-table-column>
-        
-        <el-table-column prop="sourceId" label="映射ID" min-width="150" show-overflow-tooltip />
-        
+
+        <el-table-column
+          prop="sourceId"
+          label="映射ID"
+          min-width="150"
+          show-overflow-tooltip
+        />
+
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <div v-if="row.type === 'point'">
-              <el-tag v-if="row.mapping || row.protocolDetail" type="success" size="small">已配置</el-tag>
+              <el-tag
+                v-if="row.mapping || row.protocolDetail"
+                type="success"
+                size="small"
+                >已配置</el-tag
+              >
               <el-tag v-else type="info" size="small">未配置</el-tag>
             </div>
           </template>
@@ -628,16 +691,27 @@ watch(
             />
           </el-select>
           <div class="mt-1 text-xs text-gray-500">
-            {{ form.gatewayId ? '已按网关过滤' : '若下拉为空，请先在"点位"页创建点位并刷新列表' }}
+            {{
+              form.gatewayId
+                ? "已按网关过滤"
+                : '若下拉为空，请先在"点位"页创建点位并刷新列表'
+            }}
           </div>
         </el-form-item>
         <el-form-item label="sourceType">
-          <el-input v-model="form.sourceType" :disabled="true" :placeholder="effectiveSourceType" />
+          <el-input
+            v-model="form.sourceType"
+            :disabled="true"
+            :placeholder="effectiveSourceType"
+          />
           <div class="mt-1 text-xs text-gray-500">{{ sourceTypeHint }}</div>
         </el-form-item>
         <el-form-item label="address">
           <el-input v-model="form.address" placeholder="topic/xxx" />
-          <div v-if="effectiveSourceType !== 'mqtt'" class="mt-1 text-xs text-gray-500">
+          <div
+            v-if="effectiveSourceType !== 'mqtt'"
+            class="mt-1 text-xs text-gray-500"
+          >
             TCP/Modbus 场景 address 主要用于展示与检索；留空时会自动生成默认值。
           </div>
         </el-form-item>
@@ -659,10 +733,20 @@ watch(
             </el-select>
           </el-form-item>
           <el-form-item label="registerAddress (0-based)">
-            <el-input-number v-model="form.modbusRegisterAddress" :min="0" :max="65535" class="w-full" />
+            <el-input-number
+              v-model="form.modbusRegisterAddress"
+              :min="0"
+              :max="65535"
+              class="w-full"
+            />
           </el-form-item>
           <el-form-item label="registerCount / quantity">
-            <el-input-number v-model="form.modbusRegisterCount" :min="1" :max="modbusRegisterCountMax" class="w-full" />
+            <el-input-number
+              v-model="form.modbusRegisterCount"
+              :min="1"
+              :max="modbusRegisterCountMax"
+              class="w-full"
+            />
             <div class="mt-1 text-xs text-gray-500">
               01/02 最大 2000，03/04 最大 125（与后端校验一致）
             </div>
@@ -685,7 +769,12 @@ watch(
             </el-select>
           </el-form-item>
           <el-form-item label="wordOrder (32-bit required)">
-            <el-select v-model="form.modbusWordOrder" class="w-full" clearable placeholder="ABCD">
+            <el-select
+              v-model="form.modbusWordOrder"
+              class="w-full"
+              clearable
+              placeholder="ABCD"
+            >
               <el-option label="ABCD" value="ABCD" />
               <el-option label="CDAB" value="CDAB" />
               <el-option label="BADC" value="BADC" />
@@ -719,17 +808,25 @@ watch(
           <div class="flex items-center gap-2">
             <el-button @click="fetchRealtime">查看实时值</el-button>
             <span v-if="realtime" class="text-xs text-gray-600">
-              ts={{ realtime.tsMs }} value={{ realtime.value }} quality={{ realtime.quality || "-" }}
+              ts={{ realtime.tsMs }} value={{ realtime.value }} quality={{
+                realtime.quality || "-"
+              }}
             </span>
             <span v-else class="text-xs text-gray-400">未查询</span>
           </div>
         </el-form-item>
-        
+
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="submit">
             {{ currentSourceId ? "更新" : "创建" }}
           </el-button>
-          <el-button v-if="currentSourceId" type="danger" plain :loading="loading" @click="handleDeleteMapping">
+          <el-button
+            v-if="currentSourceId"
+            type="danger"
+            plain
+            :loading="loading"
+            @click="handleDeleteMapping"
+          >
             删除映射
           </el-button>
         </el-form-item>
@@ -740,8 +837,8 @@ watch(
 
 <style scoped>
 .ems-page {
-  padding: var(--space-6);
   max-width: 1600px;
+  padding: var(--space-6);
   margin: 0 auto;
 }
 </style>

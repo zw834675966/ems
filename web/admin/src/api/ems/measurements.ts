@@ -18,11 +18,13 @@ export type MeasurementsQuery = {
   order?: "asc" | "desc";
 };
 
-export const listMeasurements = (projectId: string, query: MeasurementsQuery) => {
+export const listMeasurements = (
+  projectId: string,
+  query: MeasurementsQuery
+) => {
   return http.request<ApiResponse<MeasurementValueDto[]>>(
     "get",
     `/projects/${projectId}/measurements`,
     { params: query }
   );
 };
-

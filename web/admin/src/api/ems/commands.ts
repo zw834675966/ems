@@ -33,7 +33,10 @@ export const listCommands = (projectId: string, limit?: number) => {
   );
 };
 
-export const createCommand = (projectId: string, data: CreateCommandRequest) => {
+export const createCommand = (
+  projectId: string,
+  data: CreateCommandRequest
+) => {
   return http.request<ApiResponse<CommandDto>>(
     "post",
     `/projects/${projectId}/commands`,
@@ -47,4 +50,3 @@ export const listCommandReceipts = (projectId: string, commandId: string) => {
     `/projects/${projectId}/commands/${commandId}/receipts`
   );
 };
-

@@ -37,23 +37,38 @@ const { title, getLogo } = useNav();
 </template>
 
 <style lang="scss" scoped>
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.08);
+  }
+}
+
 .sidebar-logo-container {
   position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
   height: 56px;
   overflow: hidden;
-  background: linear-gradient(135deg,
+  background: linear-gradient(
+    135deg,
     var(--pure-theme-sidebar-logo) 0%,
-    color-mix(in srgb, var(--pure-theme-sidebar-logo) 85%, #000) 100%);
+    color-mix(in srgb, var(--pure-theme-sidebar-logo) 85%, #000) 100%
+  );
   border-bottom: 1px solid var(--color-cream-200);
-  display: flex;
-  align-items: center;
   transition: all var(--transition-base);
 
   html.dark & {
-    background: linear-gradient(135deg,
-      rgba(26, 26, 26, 0.95) 0%,
-      rgba(42, 42, 42, 0.95) 100%);
+    background: linear-gradient(
+      135deg,
+      rgb(26 26 26 / 95%) 0%,
+      rgb(42 42 42 / 95%) 100%
+    );
     border-bottom-color: var(--color-cream-300);
   }
 }
@@ -69,17 +84,17 @@ const { title, getLogo } = useNav();
   transition: all var(--transition-fast);
 
   &:hover {
-    background-color: rgba(0, 0, 0, 0.02);
+    background-color: rgb(0 0 0 / 2%);
 
     html.dark & {
-      background-color: rgba(255, 255, 255, 0.03);
+      background-color: rgb(255 255 255 / 3%);
     }
   }
 
   .logo-img {
     display: inline-block;
-    height: 36px;
     width: auto;
+    height: 36px;
     object-fit: contain;
     transition: all var(--transition-base);
 
@@ -99,8 +114,8 @@ const { title, getLogo } = useNav();
     font-weight: 600;
     line-height: 36px;
     color: var(--pure-theme-sub-menu-active-text);
-    white-space: nowrap;
     letter-spacing: -0.01em;
+    white-space: nowrap;
     transition: all var(--transition-fast);
   }
 }
@@ -123,9 +138,9 @@ const { title, getLogo } = useNav();
     padding: 0;
 
     .sidebar-title {
-      opacity: 0;
       width: 0;
       margin: 0;
+      opacity: 0;
     }
 
     .logo-img {
@@ -137,14 +152,5 @@ const { title, getLogo } = useNav();
 /* Logo icon animation on hover */
 :not(.collapses) .sidebar-logo-link:hover .logo-img {
   animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1);
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
 }
 </style>

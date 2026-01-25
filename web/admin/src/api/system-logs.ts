@@ -42,13 +42,25 @@ export const useSystemLogsApi = (projectId: string) => {
       // 前端这里定义的 SystemLogQuery 属性名应该与后端 Deserialize 的结构一致
       // 后端: #[serde(rename_all = "camelCase")] pub struct SystemLogQuery { pub from: ... }
       // 所以前端传 params 应该是 { from: ..., to: ... }
-      return http.request<SystemLogDto[]>("get", `/projects/${projectId}/system-logs`, { params });
+      return http.request<SystemLogDto[]>(
+        "get",
+        `/projects/${projectId}/system-logs`,
+        { params }
+      );
     },
     getUnreadCount: (category?: "operation" | "error" | "warning") => {
-      return http.request<UnreadStatsDto>("get", `/projects/${projectId}/system-logs/unread`, { params: { category } });
+      return http.request<UnreadStatsDto>(
+        "get",
+        `/projects/${projectId}/system-logs/unread`,
+        { params: { category } }
+      );
     },
     markAsRead: (logIds: string[]) => {
-      return http.request<number>("post", `/projects/${projectId}/system-logs/read`, { data: { logIds } });
+      return http.request<number>(
+        "post",
+        `/projects/${projectId}/system-logs/read`,
+        { data: { logIds } }
+      );
     }
   };
 };

@@ -8,7 +8,10 @@ import {
   setRbacRolePermissions,
   type RbacRoleDto
 } from "@/api/rbac/roles";
-import { listRbacPermissions, type PermissionDto } from "@/api/rbac/permissions";
+import {
+  listRbacPermissions,
+  type PermissionDto
+} from "@/api/rbac/permissions";
 
 defineOptions({
   name: "EmsRbacRoles"
@@ -184,7 +187,12 @@ onMounted(() => {
         <el-table-column label="actions" min-width="280">
           <template #default="{ row }">
             <el-button size="small" @click="openPerms(row)">权限</el-button>
-            <el-button size="small" type="danger" plain @click="removeRole(row)">
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              @click="removeRole(row)"
+            >
               删除
             </el-button>
           </template>
@@ -258,4 +266,3 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
-

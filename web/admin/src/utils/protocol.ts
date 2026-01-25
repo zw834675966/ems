@@ -30,7 +30,11 @@ export const buildProtocolConfig = (protocolType: string, form: any) => {
 /**
  * 解析协议配置 JSON 到响应式表单对象
  */
-export const parseProtocolConfig = (protocolType: string, configStr: string | undefined, form: any) => {
+export const parseProtocolConfig = (
+  protocolType: string,
+  configStr: string | undefined,
+  form: any
+) => {
   if (!configStr) return;
   try {
     const config = JSON.parse(configStr);
@@ -38,7 +42,8 @@ export const parseProtocolConfig = (protocolType: string, configStr: string | un
       case "modbus_tcp":
         form.modbusHost = config.host || "";
         form.modbusPort = config.port || 502;
-        form.modbusPollInterval = config.pollIntervalMs || config.poll_interval_ms || 1000;
+        form.modbusPollInterval =
+          config.pollIntervalMs || config.poll_interval_ms || 1000;
         break;
       case "tcp_server":
         form.tcpServerPort = config.listenPort || config.listen_port || 9000;
@@ -46,7 +51,8 @@ export const parseProtocolConfig = (protocolType: string, configStr: string | un
       case "tcp_client":
         form.tcpClientHost = config.host || "";
         form.tcpClientPort = config.port || 8080;
-        form.tcpClientPollIntervalMs = config.pollIntervalMs || config.poll_interval_ms || 1000;
+        form.tcpClientPollIntervalMs =
+          config.pollIntervalMs || config.poll_interval_ms || 1000;
         break;
     }
   } catch (e) {
@@ -65,14 +71,21 @@ export const getProtocolLabel = (type: string) => {
 /**
  * 构建设备地址配置 JSON
  */
-export const buildAddressConfig = (protocolType: string | undefined, form: any) => {
+export const buildAddressConfig = (
+  protocolType: string | undefined,
+  form: any
+) => {
   if (protocolType === "modbus_tcp") {
     return JSON.stringify({ unitId: form.unitId });
   }
   if (protocolType === "tcp_server" || protocolType === "tcp_client") {
     if (!form.devId) return undefined;
     const payload: any = { devId: form.devId };
-    if (form.devType !== undefined && form.devType !== null && form.devType !== "") {
+    if (
+      form.devType !== undefined &&
+      form.devType !== null &&
+      form.devType !== ""
+    ) {
       payload.devType = form.devType;
     }
     return JSON.stringify(payload);
@@ -83,7 +96,10 @@ export const buildAddressConfig = (protocolType: string | undefined, form: any) 
 /**
  * 解析设备地址配置
  */
-export const parseAddressConfig = (configStr: string | undefined, form: any) => {
+export const parseAddressConfig = (
+  configStr: string | undefined,
+  form: any
+) => {
   if (!configStr) return;
   try {
     const config = JSON.parse(configStr);
@@ -98,7 +114,10 @@ export const parseAddressConfig = (configStr: string | undefined, form: any) => 
 /**
  * 构建点位协议细节配置 JSON
  */
-export const buildProtocolDetail = (protocolType: string | undefined, form: any) => {
+export const buildProtocolDetail = (
+  protocolType: string | undefined,
+  form: any
+) => {
   if (protocolType !== "modbus_tcp") return undefined;
 
   return JSON.stringify({
@@ -114,15 +133,21 @@ export const buildProtocolDetail = (protocolType: string | undefined, form: any)
 /**
  * 解析点位协议细节配置
  */
-export const parseProtocolDetail = (detailStr: string | undefined, form: any) => {
+export const parseProtocolDetail = (
+  detailStr: string | undefined,
+  form: any
+) => {
   if (!detailStr) return;
   try {
     const detail = JSON.parse(detailStr);
     form.modbusFunctionCode = detail.functionCode ?? detail.function_code ?? 3;
-    form.modbusRegisterAddress = detail.registerAddress ?? detail.register_address ?? 0;
-    form.modbusRegisterCount = detail.registerCount ?? detail.register_count ?? 1;
+    form.modbusRegisterAddress =
+      detail.registerAddress ?? detail.register_address ?? 0;
+    form.modbusRegisterCount =
+      detail.registerCount ?? detail.register_count ?? 1;
     form.modbusDataType = detail.dataType ?? detail.data_type ?? "int16";
-    form.modbusEndian = detail.endian ?? detail.byteOrder ?? detail.byte_order ?? "big_endian";
+    form.modbusEndian =
+      detail.endian ?? detail.byteOrder ?? detail.byte_order ?? "big_endian";
     form.modbusWordOrder = detail.wordOrder ?? detail.word_order ?? "";
   } catch (e) {
     console.warn("Failed to parse protocol detail:", e);
@@ -138,7 +163,10 @@ export const buildTcpProtocolDetail = (form: any) => {
   });
 };
 
-export const parseTcpProtocolDetail = (detailStr: string | undefined, form: any) => {
+export const parseTcpProtocolDetail = (
+  detailStr: string | undefined,
+  form: any
+) => {
   if (!detailStr) return;
   try {
     const detail = JSON.parse(detailStr);

@@ -29,13 +29,19 @@ export const listRbacUsers = () => {
 };
 
 export const createRbacUser = (data: CreateRbacUserRequest) => {
-  return http.request<ApiResponse<RbacUserDto>>("post", "/rbac/users", { data });
+  return http.request<ApiResponse<RbacUserDto>>("post", "/rbac/users", {
+    data
+  });
 };
 
 export const updateRbacUser = (userId: string, data: UpdateRbacUserRequest) => {
-  return http.request<ApiResponse<RbacUserDto>>("put", `/rbac/users/${userId}`, {
-    data
-  });
+  return http.request<ApiResponse<RbacUserDto>>(
+    "put",
+    `/rbac/users/${userId}`,
+    {
+      data
+    }
+  );
 };
 
 export const setRbacUserRoles = (userId: string, roles: string[]) => {
@@ -45,4 +51,3 @@ export const setRbacUserRoles = (userId: string, roles: string[]) => {
     { data: { roles } satisfies SetUserRolesRequest }
   );
 };
-

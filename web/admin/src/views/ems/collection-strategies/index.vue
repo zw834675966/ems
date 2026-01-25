@@ -136,15 +136,18 @@ const handleSaveSelected = async () => {
 
   saving.value = true;
   try {
-    const strategyRequests: UpsertStrategyRequest[] = selectedPointIds.value.map(pointId => ({
-      pointId,
-      enabled: editForm.value.enabled,
-      intervalValue: editForm.value.intervalValue,
-      intervalUnit: editForm.value.intervalUnit,
-      writeToDb: editForm.value.writeToDb
-    }));
+    const strategyRequests: UpsertStrategyRequest[] =
+      selectedPointIds.value.map(pointId => ({
+        pointId,
+        enabled: editForm.value.enabled,
+        intervalValue: editForm.value.intervalValue,
+        intervalUnit: editForm.value.intervalUnit,
+        writeToDb: editForm.value.writeToDb
+      }));
 
-    const res = await upsertStrategies(projectId.value, { strategies: strategyRequests });
+    const res = await upsertStrategies(projectId.value, {
+      strategies: strategyRequests
+    });
     if (res.success) {
       ElMessage.success(`已保存 ${strategyRequests.length} 个策略`);
       await loadData();
@@ -165,7 +168,9 @@ const handleSaveSelected = async () => {
 
 const handleDelete = async (strategyId: string) => {
   try {
-    await ElMessageBox.confirm("确定删除该采集策略？", "提示", { type: "warning" });
+    await ElMessageBox.confirm("确定删除该采集策略？", "提示", {
+      type: "warning"
+    });
     const res = await deleteStrategy(projectId.value, strategyId);
     if (res.success) {
       ElMessage.success("删除成功");
@@ -191,9 +196,14 @@ const handleBatchEnable = async (enabled: boolean) => {
   }
 
   try {
-    const res = await batchUpdateEnabled(projectId.value, { strategyIds, enabled });
+    const res = await batchUpdateEnabled(projectId.value, {
+      strategyIds,
+      enabled
+    });
     if (res.success) {
-      ElMessage.success(`已${enabled ? "启用" : "禁用"} ${res.data?.updated ?? 0} 个策略`);
+      ElMessage.success(
+        `已${enabled ? "启用" : "禁用"} ${res.data?.updated ?? 0} 个策略`
+      );
       await loadData();
     }
   } catch {
@@ -205,10 +215,13 @@ const handleBatchEnable = async (enabled: boolean) => {
 // 生命周期
 // ============================================================================
 
-watch(() => projectId.value, () => {
-  selectedPointIds.value = [];
-  loadData();
-});
+watch(
+  () => projectId.value,
+  () => {
+    selectedPointIds.value = [];
+    loadData();
+  }
+);
 
 onMounted(() => {
   if (projectId.value) {
@@ -225,7 +238,9 @@ onMounted(() => {
         <div class="flex items-center justify-between flex-wrap gap-2">
           <div>
             <div class="text-base font-medium">采集策略配置</div>
-            <div class="text-xs text-gray-400">批量配置点位采集频率与存储规则</div>
+            <div class="text-xs text-gray-400">
+              批量配置点位采集频率与存储规则
+            </div>
           </div>
           <EmsProjectSelector v-model="projectId" />
         </div>
@@ -234,7 +249,9 @@ onMounted(() => {
       <!-- Batch Config Form -->
       <div class="config-panel">
         <div class="flex items-center gap-4 flex-wrap">
-          <div class="flex items-center gap-3 bg-white dark:bg-gray-800 p-1.5 rounded-md border border-gray-200 dark:border-gray-700">
+          <div
+            class="flex items-center gap-3 bg-white dark:bg-gray-800 p-1.5 rounded-md border border-gray-200 dark:border-gray-700"
+          >
             <span class="text-sm text-gray-500 pl-2">采集间隔</span>
             <div class="flex items-center">
               <el-input-number
@@ -245,7 +262,11 @@ onMounted(() => {
                 size="default"
                 class="!w-32"
               />
-              <el-select v-model="editForm.intervalUnit" size="default" class="!w-24 ml-[-1px]">
+              <el-select
+                v-model="editForm.intervalUnit"
+                size="default"
+                class="!w-24 ml-[-1px]"
+              >
                 <el-option label="毫秒" value="ms" />
                 <el-option label="秒" value="s" />
                 <el-option label="分钟" value="min" />
@@ -278,10 +299,16 @@ onMounted(() => {
           </el-button>
 
           <el-button-group size="small">
-            <el-button :disabled="!hasSelection" @click="handleBatchEnable(true)">
+            <el-button
+              :disabled="!hasSelection"
+              @click="handleBatchEnable(true)"
+            >
               批量启用
             </el-button>
-            <el-button :disabled="!hasSelection" @click="handleBatchEnable(false)">
+            <el-button
+              :disabled="!hasSelection"
+              @click="handleBatchEnable(false)"
+            >
               批量禁用
             </el-button>
           </el-button-group>
@@ -294,9 +321,9 @@ onMounted(() => {
       <el-table
         v-loading="loading"
         :data="tableData"
-        @selection-change="handleSelectRow"
         style="width: 100%"
         row-key="pointId"
+        @selection-change="handleSelectRow"
       >
         <el-table-column type="selection" width="50" />
 
@@ -304,14 +331,21 @@ onMounted(() => {
           <template #default="{ row }">
             <div class="group cursor-default">
               <div class="font-medium truncate">{{ row.key }}</div>
-              <div class="text-xs text-gray-400 truncate opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <div
+                class="text-xs text-gray-400 truncate opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              >
                 {{ row.pointId }}
               </div>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="设备" min-width="140" prop="deviceId" show-overflow-tooltip>
+        <el-table-column
+          label="设备"
+          min-width="140"
+          prop="deviceId"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">
             <code class="text-xs">{{ row.deviceId }}</code>
           </template>
@@ -325,8 +359,12 @@ onMounted(() => {
 
         <el-table-column label="策略状态" width="100">
           <template #default="{ row }">
-            <el-tag v-if="row.hasStrategy" :type="row.enabled ? 'success' : 'warning'" size="small">
-              {{ row.enabled ? '已启用' : '已禁用' }}
+            <el-tag
+              v-if="row.hasStrategy"
+              :type="row.enabled ? 'success' : 'warning'"
+              size="small"
+            >
+              {{ row.enabled ? "已启用" : "已禁用" }}
             </el-tag>
             <span v-else class="text-gray-300 text-xs">未配置</span>
           </template>
@@ -343,23 +381,28 @@ onMounted(() => {
 
         <el-table-column label="写入DB" width="80" align="center">
           <template #default="{ row }">
-            <el-icon v-if="row.hasStrategy && row.writeToDb" class="text-green-500">
+            <el-icon
+              v-if="row.hasStrategy && row.writeToDb"
+              class="text-green-500"
+            >
               <i class="ri-checkbox-circle-fill" />
             </el-icon>
             <span v-else class="text-gray-300">-</span>
           </template>
         </el-table-column>
 
-         <el-table-column label="最新值" min-width="120">
+        <el-table-column label="最新值" min-width="120">
           <template #default="{ row }">
-            <span v-if="row.lastValue" class="font-mono text-sm">{{ row.lastValue }}</span>
+            <span v-if="row.lastValue" class="font-mono text-sm">{{
+              row.lastValue
+            }}</span>
             <span v-else class="text-gray-300">-</span>
           </template>
         </el-table-column>
 
         <el-table-column label="操作" width="160" fixed="right" align="center">
           <template #default="{ row }">
-             <el-button
+            <el-button
               type="primary"
               link
               size="small"
@@ -386,15 +429,15 @@ onMounted(() => {
 
 <style scoped>
 .ems-page {
-  padding: var(--space-6);
   max-width: 1600px;
+  padding: var(--space-6);
   margin: 0 auto;
 }
 
 .config-panel {
+  padding: 12px 16px;
   background: var(--color-gray-50);
   border-radius: 8px;
-  padding: 12px 16px;
 }
 
 :deep(.dark) .config-panel {
@@ -406,7 +449,14 @@ onMounted(() => {
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

@@ -90,8 +90,8 @@ useEventListener(document, "keydown", ({ code }) => {
 
 <template>
   <div class="login-page select-none">
-    <div class="login-background"></div>
-    
+    <div class="login-background" />
+
     <div class="flex-c absolute right-8 top-8 z-50">
       <el-switch
         v-model="dataTheme"
@@ -108,7 +108,7 @@ useEventListener(document, "keydown", ({ code }) => {
           <Motion :delay="50">
             <img :src="avatar" class="avatar" />
           </Motion>
-          
+
           <Motion :delay="100">
             <h2 class="title">{{ title }}</h2>
           </Motion>

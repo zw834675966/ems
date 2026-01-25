@@ -13,4 +13,3 @@ export function saveEmsProjectId(projectId: string) {
 export function clearEmsProjectId() {
   storageLocal().removeItem(EMS_PROJECT_ID_KEY);
 }
-

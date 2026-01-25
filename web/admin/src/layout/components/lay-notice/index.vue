@@ -4,7 +4,11 @@ import { useRoute } from "vue-router";
 import { TabItem, ListItem } from "./types";
 import NoticeList from "./components/NoticeList.vue";
 import BellIcon from "~icons/ep/bell";
-import { useSystemLogsApi, SystemLogDto, UnreadStatsDto } from "@/api/system-logs";
+import {
+  useSystemLogsApi,
+  SystemLogDto,
+  UnreadStatsDto
+} from "@/api/system-logs";
 import dayjs from "dayjs";
 
 const route = useRoute();
@@ -38,26 +42,37 @@ const notices = ref<TabItem[]>([
 const activeKey = ref("1");
 
 const projectId = computed(() => {
-  return (route.params.projectId as string) || (route.query.projectId as string) || "";
+  return (
+    (route.params.projectId as string) ||
+    (route.query.projectId as string) ||
+    ""
+  );
 });
 
-const { list: listSystemLogs, getUnreadCount } = useSystemLogsApi(projectId.value);
+const { list: listSystemLogs, getUnreadCount } = useSystemLogsApi(
+  projectId.value
+);
 
 const mapLogToListItem = (log: SystemLogDto): ListItem => {
   return {
-    avatar: "", 
+    avatar: "",
     title: log.title,
     description: log.message,
     datetime: dayjs(log.createdAtMs).format("YYYY-MM-DD HH:mm:ss"),
     type: log.category,
-    status: log.level === 'error' ? 'danger' : log.level === 'warn' ? 'warning' : 'info',
+    status:
+      log.level === "error"
+        ? "danger"
+        : log.level === "warn"
+          ? "warning"
+          : "info",
     extra: log.level.toUpperCase()
   };
 };
 
 const fetchData = async () => {
   if (!projectId.value) {
-    notices.value.forEach(tab => tab.list = []);
+    notices.value.forEach(tab => (tab.list = []));
     noticesNum.value = 0;
     return;
   }
@@ -68,7 +83,7 @@ const fetchData = async () => {
       listSystemLogs({ limit: 50 }),
       getUnreadCount()
     ]);
-    
+
     // Process Logs
     const errorLogs: ListItem[] = [];
     const operationLogs: ListItem[] = [];
@@ -78,11 +93,11 @@ const fetchData = async () => {
 
     logs.forEach((log: SystemLogDto) => {
       const item = mapLogToListItem(log);
-      if (log.category === 'error') {
+      if (log.category === "error") {
         errorLogs.push(item);
-      } else if (log.category === 'operation') {
+      } else if (log.category === "operation") {
         operationLogs.push(item);
-      } else if (log.category === 'warning') {
+      } else if (log.category === "warning") {
         warningLogs.push(item);
       }
     });
@@ -97,13 +112,13 @@ const fetchData = async () => {
     // If it returns { success, data }, we need to handle that.
     // Based on my previous fix for list, it seems I should check format.
     const stats: UnreadStatsDto = (unreadStats as any).data || unreadStats;
-    if (stats && typeof stats.total === 'number') {
+    if (stats && typeof stats.total === "number") {
       noticesNum.value = stats.total;
     } else {
-       // Fallback to sum of lists if stats fail or structure different
-       noticesNum.value = errorLogs.length + operationLogs.length + warningLogs.length;
+      // Fallback to sum of lists if stats fail or structure different
+      noticesNum.value =
+        errorLogs.length + operationLogs.length + warningLogs.length;
     }
-
   } catch (error) {
     console.error("Failed to fetch system logs:", error);
   }
@@ -113,9 +128,12 @@ onMounted(() => {
   fetchData();
 });
 
-watch(() => projectId.value, () => {
-  fetchData();
-});
+watch(
+  () => projectId.value,
+  () => {
+    fetchData();
+  }
+);
 
 const getLabel = computed(
   () => item =>
@@ -134,7 +152,11 @@ const getLabel = computed(
       ]"
     >
       <!-- Error badge prioritized if there are errors -->
-      <el-badge :value="Number(noticesNum) === 0 ? '' : noticesNum" :max="99" :type="notices[0].list.length > 0 ? 'danger' : 'primary'">
+      <el-badge
+        :value="Number(noticesNum) === 0 ? '' : noticesNum"
+        :max="99"
+        :type="notices[0].list.length > 0 ? 'danger' : 'primary'"
+      >
         <span class="header-notice-icon">
           <IconifyIconOffline :icon="BellIcon" />
         </span>

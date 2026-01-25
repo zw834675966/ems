@@ -97,8 +97,8 @@ const fetchList = async () => {
 
 <style scoped>
 .ems-page {
-  padding: var(--space-6);
   max-width: 1600px;
+  padding: var(--space-6);
   margin: 0 auto;
 }
 </style>

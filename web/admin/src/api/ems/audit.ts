@@ -25,4 +25,3 @@ export const listAuditLogs = (projectId: string, query: AuditLogQuery) => {
     { params: query }
   );
 };
-

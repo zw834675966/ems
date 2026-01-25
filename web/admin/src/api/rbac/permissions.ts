@@ -9,4 +9,3 @@ export type PermissionDto = {
 export const listRbacPermissions = () => {
   return http.request<ApiResponse<PermissionDto[]>>("get", "/rbac/permissions");
 };
-

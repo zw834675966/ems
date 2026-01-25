@@ -8,36 +8,33 @@
   --el-color-warning: var(--color-orange);
   --el-color-danger: var(--color-red);
   --el-color-info: var(--color-gray-500);
-
-  --el-bg-color: #ffffff;
+  --el-bg-color: #fff;
   --el-bg-color-page: var(--color-gray-50);
-  --el-bg-color-overlay: #ffffff;
-
+  --el-bg-color-overlay: #fff;
   --el-text-color-primary: var(--color-gray-700);
   --el-text-color-regular: var(--color-gray-600);
-
   --el-border-radius-base: var(--radius-md);
   --el-border-radius-small: var(--radius-sm);
   --el-border-radius-round: var(--radius-full);
-
   --el-box-shadow: var(--shadow-md);
   --el-box-shadow-light: var(--shadow-sm);
 }
 
 /* --- Buttons --- */
 .el-button {
-  font-family: var(--font-body);
-  font-weight: 500;
-  border-radius: var(--radius-full);
+  height: auto;
+
   /* Apple uses pill buttons in many places */
   padding: 10px 20px;
-  height: auto;
-  transition: all var(--transition-base);
+  font-family: var(--font-body);
+  font-weight: 500;
   border: none !important;
+  border-radius: var(--radius-full);
+  transition: all var(--transition-base);
 
   &--primary {
-    background: var(--color-blue) !important;
     color: white !important;
+    background: var(--color-blue) !important;
 
     &:hover {
       opacity: 0.9;
@@ -50,43 +47,43 @@
   }
 
   &--default {
-    background: rgba(0, 0, 0, 0.05) !important;
     color: var(--color-gray-700) !important;
+    background: rgb(0 0 0 / 5%) !important;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.1) !important;
+      background: rgb(0 0 0 / 10%) !important;
     }
   }
 
   &.is-link {
-    background: transparent !important;
-    color: var(--color-blue) !important;
     padding: 4px 8px;
+    color: var(--color-blue) !important;
+    background: transparent !important;
 
     &:hover {
-      background: rgba(0, 113, 227, 0.05) !important;
       text-decoration: none;
+      background: rgb(0 113 227 / 5%) !important;
     }
   }
 }
 
 /* --- Cards --- */
 .el-card {
-  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 5%) !important;
   border-radius: var(--radius-xl) !important;
   box-shadow: var(--shadow-sm) !important;
   transition: box-shadow var(--transition-base) !important;
-  overflow: hidden;
 
   &:hover {
     box-shadow: var(--shadow-md) !important;
   }
 
   .el-card__header {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
     padding: var(--space-5) var(--space-6) !important;
     font-weight: 700 !important;
     color: var(--color-gray-900);
+    border-bottom: 1px solid rgb(0 0 0 / 3%) !important;
   }
 }
 
@@ -96,21 +93,21 @@
   --el-input-focus-border-color: var(--color-blue);
 
   .el-input__wrapper {
-    background: rgba(0, 0, 0, 0.04) !important;
-    box-shadow: none !important;
+    padding: 8px 16px !important;
+    background: rgb(0 0 0 / 4%) !important;
     border: 1px solid transparent !important;
     border-radius: var(--radius-md) !important;
-    padding: 8px 16px !important;
+    box-shadow: none !important;
     transition: all var(--transition-fast) !important;
 
     &:hover {
-      background: rgba(0, 0, 0, 0.06) !important;
+      background: rgb(0 0 0 / 6%) !important;
     }
 
     &.is-focus {
       background: white !important;
       border-color: var(--color-blue) !important;
-      box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.1) !important;
+      box-shadow: 0 0 0 4px rgb(0 113 227 / 10%) !important;
     }
   }
 }
@@ -121,24 +118,24 @@
   --el-table-row-hover-bg-color: var(--color-gray-50);
 
   th.el-table__cell {
+    font-size: 13px !important;
     font-weight: 600 !important;
     color: var(--color-gray-500) !important;
     text-transform: uppercase;
-    font-size: 13px !important;
     letter-spacing: 0.05em;
     border-bottom: 1px solid var(--color-gray-100) !important;
   }
 
   td.el-table__cell {
-    border-bottom: 1px solid var(--color-gray-100) !important;
     padding: 16px 0 !important;
+    border-bottom: 1px solid var(--color-gray-100) !important;
   }
 }
 
 /* --- Dialogs --- */
 .el-dialog {
-  border-radius: var(--radius-xl) !important;
   overflow: hidden;
+  border-radius: var(--radius-xl) !important;
   box-shadow: var(--shadow-2xl) !important;
 
   &.is-draggable .el-dialog__header {
@@ -148,7 +145,7 @@
   .el-dialog__header {
     padding: var(--space-6) !important;
     margin-right: 0 !important;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+    border-bottom: 1px solid rgb(0 0 0 / 5%) !important;
   }
 
   .el-dialog__body {
@@ -157,37 +154,36 @@
 
   .el-dialog__footer {
     padding: var(--space-6) !important;
-    border-top: 1px solid rgba(0, 0, 0, 0.05) !important;
     background: var(--color-gray-50);
+    border-top: 1px solid rgb(0 0 0 / 5%) !important;
   }
 }
 
 /* --- Tags --- */
 .el-tag {
+  padding: 0 10px !important;
+  font-weight: 600 !important;
   border: none !important;
   border-radius: var(--radius-sm) !important;
-  font-weight: 600 !important;
-  padding: 0 10px !important;
 
   &--success {
-    background: rgba(40, 205, 65, 0.1) !important;
     color: var(--color-green) !important;
+    background: rgb(40 205 65 / 10%) !important;
   }
 
   &--warning {
-    background: rgba(255, 149, 0, 0.1) !important;
     color: var(--color-orange) !important;
+    background: rgb(255 149 0 / 10%) !important;
   }
 
   &--danger {
-    background: rgba(255, 59, 48, 0.1) !important;
     color: var(--color-red) !important;
+    background: rgb(255 59 48 / 10%) !important;
   }
 }
 
 /* --- Pagination --- */
 .el-pagination {
-
   .btn-prev,
   .btn-next,
   .el-pager li {
@@ -199,8 +195,8 @@
     }
 
     &.is-active {
-      background: var(--color-blue) !important;
       color: white !important;
+      background: var(--color-blue) !important;
     }
   }
 }
@@ -208,20 +204,20 @@
 /* --- Dark Mode Overrides --- */
 html.dark {
   --el-bg-color: #1a1a1a;
-  --el-bg-color-page: #000000;
-  --el-border-color: rgba(255, 255, 255, 0.1);
+  --el-bg-color-page: #000;
+  --el-border-color: rgb(255 255 255 / 10%);
   --el-text-color-primary: #f5f5f7;
 
   .el-card {
     background: #1a1a1a !important;
-    border-color: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgb(255 255 255 / 5%) !important;
   }
 
   .el-input__wrapper {
-    background: rgba(255, 255, 255, 0.05) !important;
+    background: rgb(255 255 255 / 5%) !important;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.08) !important;
+      background: rgb(255 255 255 / 8%) !important;
     }
 
     &.is-focus {
@@ -230,11 +226,11 @@ html.dark {
   }
 
   .el-button--default {
-    background: rgba(255, 255, 255, 0.1) !important;
     color: #f5f5f7 !important;
+    background: rgb(255 255 255 / 10%) !important;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.15) !important;
+      background: rgb(255 255 255 / 15%) !important;
     }
   }
 }

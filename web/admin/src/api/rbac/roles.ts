@@ -22,18 +22,22 @@ export const listRbacRoles = () => {
 };
 
 export const createRbacRole = (data: CreateRbacRoleRequest) => {
-  return http.request<ApiResponse<RbacRoleDto>>("post", "/rbac/roles", { data });
+  return http.request<ApiResponse<RbacRoleDto>>("post", "/rbac/roles", {
+    data
+  });
 };
 
 export const deleteRbacRole = (roleCode: string) => {
   return http.request<ApiResponse<null>>("delete", `/rbac/roles/${roleCode}`);
 };
 
-export const setRbacRolePermissions = (roleCode: string, permissions: string[]) => {
+export const setRbacRolePermissions = (
+  roleCode: string,
+  permissions: string[]
+) => {
   return http.request<ApiResponse<RbacRoleDto>>(
     "put",
     `/rbac/roles/${roleCode}/permissions`,
     { data: { permissions } satisfies SetRolePermissionsRequest }
   );
 };
-

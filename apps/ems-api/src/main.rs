@@ -109,10 +109,10 @@ mod middleware;
 /// 定义所有 API 路由及其对应的处理器
 mod routes;
 
+mod app_state;
 /// 工具函数模块
 /// 包含通用的辅助函数和工具类
 mod utils;
-mod app_state;
 
 pub(crate) use app_state::AppState;
 
@@ -163,7 +163,6 @@ use ems_storage::{
 
 // 遥测模块 —— 日志和追踪系统初始化
 use ems_telemetry::init_tracing;
-
 
 // 标准库
 use std::sync::Arc; // 原子引用计数（线程安全的共享所有权）

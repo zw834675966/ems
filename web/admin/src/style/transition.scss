@@ -12,8 +12,8 @@
 /* fade-transform */
 .fade-transform-leave-active,
 .fade-transform-enter-active {
-  will-change: opacity, transform; /* Optimize burden: Hint browser */
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform; /* Optimize burden: Hint browser */
 }
 
 .fade-transform-enter-from {
@@ -27,11 +27,12 @@
 }
 
 /* fade-in-up animation */
-@keyframes fadeInUp {
+@keyframes fade-in-up {
   from {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -39,11 +40,12 @@
 }
 
 /* scale-in animation */
-@keyframes scaleIn {
+@keyframes scale-in {
   from {
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -80,11 +82,11 @@
 
 /* Custom animation classes */
 .animate-fade-in-up {
-  animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-scale-in {
-  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: scale-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Staggered delays */

@@ -41,7 +41,12 @@ const form = reactive({
 const rules = reactive<FormRules>({
   name: [
     { required: true, message: "请输入项目名称", trigger: "blur" },
-    { min: 2, max: 50, message: "项目名称长度应为 2-50 个字符", trigger: "blur" }
+    {
+      min: 2,
+      max: 50,
+      message: "项目名称长度应为 2-50 个字符",
+      trigger: "blur"
+    }
   ]
 });
 
@@ -96,7 +101,9 @@ const submit = async () => {
     }
 
     if (!res.success) {
-      ElMessage.error(res.error?.message ?? (isEdit.value ? "更新失败" : "创建失败"));
+      ElMessage.error(
+        res.error?.message ?? (isEdit.value ? "更新失败" : "创建失败")
+      );
       return;
     }
     ElMessage.success(isEdit.value ? "更新成功" : "创建成功");
@@ -149,7 +156,11 @@ const submit = async () => {
         </el-alert>
       </div>
 
-      <el-skeleton :rows="5" animated :loading="loading && filteredData.length === 0">
+      <el-skeleton
+        :rows="5"
+        animated
+        :loading="loading && filteredData.length === 0"
+      >
         <template #default>
           <el-table
             v-loading="loading"
@@ -166,34 +177,31 @@ const submit = async () => {
                 <span class="font-bold text-primary">{{ row.name }}</span>
               </template>
             </el-table-column>
-            <el-table-column
-              prop="projectId"
-              label="项目 ID"
-              min-width="200"
-            >
+            <el-table-column prop="projectId" label="项目 ID" min-width="200">
               <template #default="{ row }">
                 <code class="text-xs opacity-60">{{ row.projectId }}</code>
               </template>
             </el-table-column>
-            <el-table-column
-              prop="timezone"
-              label="时区"
-              width="180"
-            >
+            <el-table-column prop="timezone" label="时区" width="180">
               <template #default="{ row }">
-                 {{ TIMEZONE_OPTIONS.find(t => t.value === row.timezone)?.label || row.timezone || 'UTC' }}
+                {{
+                  TIMEZONE_OPTIONS.find(t => t.value === row.timezone)?.label ||
+                  row.timezone ||
+                  "UTC"
+                }}
               </template>
             </el-table-column>
-            <el-table-column
-              label="状态"
-              width="120"
-              align="center"
-            >
+            <el-table-column label="状态" width="120" align="center">
               <template #default>
                 <el-tag type="success">正常</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="140" fixed="right" align="center">
+            <el-table-column
+              label="操作"
+              width="140"
+              fixed="right"
+              align="center"
+            >
               <template #default="{ row }">
                 <el-button
                   link
@@ -209,10 +217,12 @@ const submit = async () => {
                 />
               </template>
             </el-table-column>
-            
+
             <template #empty>
               <el-empty description="暂无项目数据" :image-size="120">
-                <el-button type="primary" @click="handleAdd">创建第一个项目</el-button>
+                <el-button type="primary" @click="handleAdd"
+                  >创建第一个项目</el-button
+                >
               </el-empty>
             </template>
           </el-table>
@@ -239,7 +249,13 @@ const submit = async () => {
       append-to-body
       destroy-on-close
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="mt-4">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        class="mt-4"
+      >
         <el-form-item label="项目名称" prop="name">
           <el-input
             v-model="form.name"
@@ -269,7 +285,7 @@ const submit = async () => {
         <div class="flex justify-end gap-3">
           <el-button @click="dialogVisible = false">取消</el-button>
           <el-button type="primary" :loading="loading" @click="submit">
-            {{ isEdit ? '保存' : '创建' }}
+            {{ isEdit ? "保存" : "创建" }}
           </el-button>
         </div>
       </template>
@@ -278,14 +294,21 @@ const submit = async () => {
 </template>
 
 <style scoped>
-/* 视图局部样式已简化，主要依赖全局设计体系 */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .animate-fade-in-up {
   animation: fade-in-up 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-@keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+/* 视图局部样式已简化，主要依赖全局设计体系 */
 </style>
-

@@ -1,8 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
-import { defineComponent, h, provide, inject } from "vue";
+import { defineComponent, h, provide, inject, ref } from "vue";
 
 const testGateway = vi.fn();
+const ElMessageMock = {
+  warning: vi.fn(),
+  success: vi.fn(),
+  error: vi.fn()
+};
 
 let crudState: {
   loading: any;
@@ -17,11 +22,10 @@ let crudState: {
 };
 
 const createCrudState = () => {
-  const { ref } = require("vue");
   return {
     loading: ref(false),
     error: ref(""),
-    filteredData: ref<any[]>([]),
+    filteredData: ref([] as any[]),
     searchValue: ref(""),
     pagination: ref({ total: 0, pageSize: 10, currentPage: 1 }),
     fetchList: vi.fn().mockResolvedValue(undefined),
@@ -57,7 +61,6 @@ vi.mock("@/config/constants", () => ({
 }));
 
 vi.mock("@/components/EmsProjectSelector/index.vue", () => {
-  const { defineComponent, h } = require("vue");
   return {
     default: defineComponent({
       name: "EmsProjectSelector",
@@ -71,11 +74,7 @@ vi.mock("@/components/EmsProjectSelector/index.vue", () => {
 });
 
 vi.mock("element-plus", () => ({
-  ElMessage: {
-    warning: vi.fn(),
-    success: vi.fn(),
-    error: vi.fn()
-  }
+  ElMessage: ElMessageMock
 }));
 
 const SimpleStub = defineComponent({
@@ -192,8 +191,7 @@ describe("EmsGateways view", () => {
     expect(addButton).toBeTruthy();
     await addButton?.trigger("click");
 
-    const { ElMessage } = await import("element-plus");
-    expect(ElMessage.warning).toHaveBeenCalledWith("请先选择项目");
+    expect(ElMessageMock.warning).toHaveBeenCalledWith("请先选择项目");
   });
 
   it("测试网关成功后提示并刷新列表", async () => {

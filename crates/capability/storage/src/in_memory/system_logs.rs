@@ -60,16 +60,22 @@ impl SystemLogStore for InMemorySystemLogStore {
                 {
                     return false;
                 }
-                if let Some(ref lvl) = query.level && log.level.as_str() != lvl.as_str() {
+                if let Some(ref lvl) = query.level
+                    && log.level.as_str() != lvl.as_str()
+                {
                     return false;
                 }
                 if query.unread_only && log.is_read {
                     return false;
                 }
-                if let Some(from) = query.from_ms && log.created_at_ms < from {
+                if let Some(from) = query.from_ms
+                    && log.created_at_ms < from
+                {
                     return false;
                 }
-                if let Some(to) = query.to_ms && log.created_at_ms > to {
+                if let Some(to) = query.to_ms
+                    && log.created_at_ms > to
+                {
                     return false;
                 }
                 true

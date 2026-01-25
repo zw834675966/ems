@@ -179,7 +179,7 @@ const fetchList = async (isLoadMore = false) => {
       error.value = res.error?.message ?? "查询失败";
       return;
     }
-    
+
     const newItems = res.data ?? [];
     if (isLoadMore) {
       items.value = [...items.value, ...newItems];
@@ -208,14 +208,14 @@ const fetchList = async (isLoadMore = false) => {
 };
 
 const handleSearch = () => {
-    nextCursor.value = undefined;
-    hasMore.value = false;
-    fetchList(false);
-}
+  nextCursor.value = undefined;
+  hasMore.value = false;
+  fetchList(false);
+};
 
 const handleLoadMore = () => {
-    fetchList(true);
-}
+  fetchList(true);
+};
 
 watch(
   () => projectId.value,
@@ -252,7 +252,9 @@ onUnmounted(() => {
         <div class="flex items-center justify-between flex-wrap gap-2">
           <div>
             <div class="text-base font-medium">历史数据查询</div>
-            <div class="text-xs text-gray-400">查询点位的历史趋势与数据明细</div>
+            <div class="text-xs text-gray-400">
+              查询点位的历史趋势与数据明细
+            </div>
           </div>
           <EmsProjectSelector v-model="projectId" />
         </div>
@@ -297,7 +299,9 @@ onUnmounted(() => {
         </div>
       </div>
       <div v-if="error" class="mt-4">
-        <el-alert type="error" :closable="false" show-icon>{{ error }}</el-alert>
+        <el-alert type="error" :closable="false" show-icon>{{
+          error
+        }}</el-alert>
       </div>
     </el-card>
 
@@ -305,7 +309,10 @@ onUnmounted(() => {
       <el-card shadow="never" class="chart-card">
         <template #header>
           <div class="flex justify-between items-center">
-            <span class="text-xs font-bold uppercase tracking-wider text-gray-400">趋势图表</span>
+            <span
+              class="text-xs font-bold uppercase tracking-wider text-gray-400"
+              >趋势图表</span
+            >
             <el-radio-group v-model="limit" size="small" @change="handleSearch">
               <el-radio-button :value="100">100条</el-radio-button>
               <el-radio-button :value="500">500条</el-radio-button>
@@ -318,7 +325,9 @@ onUnmounted(() => {
 
       <el-card shadow="never">
         <template #header>
-          <span class="text-xs font-bold uppercase tracking-wider text-gray-400">数据明细 ({{ items.length }})</span>
+          <span class="text-xs font-bold uppercase tracking-wider text-gray-400"
+            >数据明细 ({{ items.length }})</span
+          >
         </template>
         <el-table
           v-loading="loading"
@@ -329,59 +338,71 @@ onUnmounted(() => {
           <el-table-column prop="tsMs" label="采样时间" min-width="180">
             <template #default="{ row }">
               <span class="text-xs font-mono">
-                {{ dayjs(row.tsMs).format('YYYY-MM-DD HH:mm:ss.SSS') }}
+                {{ dayjs(row.tsMs).format("YYYY-MM-DD HH:mm:ss.SSS") }}
               </span>
             </template>
           </el-table-column>
           <el-table-column prop="value" label="采集值" min-width="120">
             <template #default="{ row }">
               <span class="font-bold text-amber-600">{{ row.value }}</span>
-              <span class="ml-1 text-[10px] text-gray-400">{{ currentPoint?.unit }}</span>
+              <span class="ml-1 text-[10px] text-gray-400">{{
+                currentPoint?.unit
+              }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="quality" label="质量" width="100">
             <template #default="{ row }">
               <el-tag
                 size="small"
-                :type="row.quality === 'good' || !row.quality ? 'success' : 'warning'"
+                :type="
+                  row.quality === 'good' || !row.quality ? 'success' : 'warning'
+                "
                 effect="plain"
               >
-                {{ row.quality || 'Good' }}
+                {{ row.quality || "Good" }}
               </el-tag>
             </template>
           </el-table-column>
         </el-table>
-        
+
         <!-- Load More Button -->
-        <div v-if="hasMore" class="p-4 flex justify-center border-t border-gray-100">
-             <el-button @click="handleLoadMore" :loading="loading" round>加载更多历史数据</el-button>
+        <div
+          v-if="hasMore"
+          class="p-4 flex justify-center border-t border-gray-100"
+        >
+          <el-button :loading="loading" round @click="handleLoadMore"
+            >加载更多历史数据</el-button
+          >
         </div>
         <div v-else class="p-4 text-center text-xs text-gray-300">
-            没有更多数据了
+          没有更多数据了
         </div>
       </el-card>
     </div>
 
-    <div v-else-if="!loading" class="mt-20 flex flex-col items-center opacity-30">
-       <el-empty description="暂无历史数据，请调整查询条件" />
+    <div
+      v-else-if="!loading"
+      class="mt-20 flex flex-col items-center opacity-30"
+    >
+      <el-empty description="暂无历史数据，请调整查询条件" />
     </div>
   </div>
 </template>
 
 <style scoped>
 .ems-page {
-  padding: var(--space-6);
   max-width: 1600px;
+  padding: var(--space-6);
   margin: 0 auto;
 }
 
 .chart-card {
-  border-radius: 20px;
   background: var(--color-white);
   border: 1px solid var(--color-cream-100);
+  border-radius: 20px;
 
   :deep(.el-card__header) {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid rgb(0 0 0 / 3%);
   }
 }
 

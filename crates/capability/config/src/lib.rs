@@ -66,8 +66,8 @@ impl AppConfig {
         let jwt_access_ttl_seconds = read_u64("EMS_JWT_ACCESS_TTL_SECONDS")?;
         let jwt_refresh_ttl_seconds = read_u64("EMS_JWT_REFRESH_TTL_SECONDS")?;
         let http_addr = env::var("EMS_HTTP_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
-        let redis_url =
-            env::var("EMS_REDIS_URL").map_err(|_| ConfigError::Missing("EMS_REDIS_URL".to_string()))?;
+        let redis_url = env::var("EMS_REDIS_URL")
+            .map_err(|_| ConfigError::Missing("EMS_REDIS_URL".to_string()))?;
         let redis_last_value_ttl_seconds =
             read_optional_u64("EMS_REDIS_LAST_VALUE_TTL_SECONDS")?.filter(|value| *value > 0);
         let redis_online_ttl_seconds = read_u64_with_default("EMS_REDIS_ONLINE_TTL_SECONDS", 60)?;

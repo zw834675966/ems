@@ -32,14 +32,14 @@ const {
   onCurrentPageChange
 } = useCrud(
   () => listPoints(projectId.value),
-  (id) => deletePoint(projectId.value, id),
+  id => deletePoint(projectId.value, id),
   {
     immediate: false,
     idKey: "pointId",
     watchSource: projectId,
     onFetchSuccess: () => {
-        refreshDevices();
-        refreshGateways();
+      refreshDevices();
+      refreshGateways();
     }
   }
 );
@@ -60,16 +60,17 @@ const form = reactive({
 
 // 表单校验规则
 const rules = reactive<FormRules>({
-  deviceId: [
-    { required: true, message: "请选择设备", trigger: "change" }
-  ],
+  deviceId: [{ required: true, message: "请选择设备", trigger: "change" }],
   key: [
     { required: true, message: "请输入点位 Key", trigger: "blur" },
-    { min: 1, max: 50, message: "点位 Key 长度应为 1-50 个字符", trigger: "blur" }
+    {
+      min: 1,
+      max: 50,
+      message: "点位 Key 长度应为 1-50 个字符",
+      trigger: "blur"
+    }
   ],
-  dataType: [
-    { required: true, message: "请选择数据类型", trigger: "change" }
-  ]
+  dataType: [{ required: true, message: "请选择数据类型", trigger: "change" }]
 });
 
 const deviceOptions = computed(() =>
@@ -88,8 +89,8 @@ const selectedGateway = computed(() =>
   gateways.value.find(g => g.gatewayId === selectedDevice.value?.gatewayId)
 );
 
-const isModbusTcp = computed(() =>
-  selectedGateway.value?.protocolType === "modbus_tcp"
+const isModbusTcp = computed(
+  () => selectedGateway.value?.protocolType === "modbus_tcp"
 );
 
 const refreshDevices = async () => {
@@ -181,7 +182,9 @@ const submit = async () => {
     }
 
     if (!res.success) {
-      ElMessage.error(res.error?.message ?? (isEdit.value ? "更新失败" : "创建失败"));
+      ElMessage.error(
+        res.error?.message ?? (isEdit.value ? "更新失败" : "创建失败")
+      );
       return;
     }
     ElMessage.success(isEdit.value ? "更新成功" : "创建成功");
@@ -208,7 +211,9 @@ onMounted(() => {
     <div class="flex-b mb-8 flex-wrap gap-4">
       <div>
         <h1>点位管理</h1>
-        <p class="text-secondary">管理项目内的采集点位（Point）及其数据元信息</p>
+        <p class="text-secondary">
+          管理项目内的采集点位（Point）及其数据元信息
+        </p>
       </div>
       <div class="flex items-center gap-4 flex-wrap">
         <el-input
@@ -231,17 +236,28 @@ onMounted(() => {
 
     <el-card class="apple-shadow" shadow="never">
       <div v-if="error" class="mb-4">
-        <el-alert type="error" :closable="false" show-icon>{{ error }}</el-alert>
+        <el-alert type="error" :closable="false" show-icon>{{
+          error
+        }}</el-alert>
       </div>
 
-      <el-skeleton :rows="5" animated :loading="loading && filteredData.length === 0">
+      <el-skeleton
+        :rows="5"
+        animated
+        :loading="loading && filteredData.length === 0"
+      >
         <template #default>
           <el-table
             v-loading="loading"
             :data="filteredData"
             row-class-name="animate-fade-in-up"
           >
-            <el-table-column prop="key" label="点位 Key" min-width="180" show-overflow-tooltip>
+            <el-table-column
+              prop="key"
+              label="点位 Key"
+              min-width="180"
+              show-overflow-tooltip
+            >
               <template #default="{ row }">
                 <span class="font-bold text-primary">{{ row.key }}</span>
               </template>
@@ -253,7 +269,7 @@ onMounted(() => {
             </el-table-column>
             <el-table-column prop="unit" label="单位" width="100">
               <template #default="{ row }">
-                <span class="text-secondary">{{ row.unit || '-' }}</span>
+                <span class="text-secondary">{{ row.unit || "-" }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="pointId" label="点位 ID" min-width="180">
@@ -261,7 +277,12 @@ onMounted(() => {
                 <code class="text-xs opacity-60">{{ row.pointId }}</code>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="140" fixed="right" align="center">
+            <el-table-column
+              label="操作"
+              width="140"
+              fixed="right"
+              align="center"
+            >
               <template #default="{ row }">
                 <el-button
                   link
@@ -277,17 +298,22 @@ onMounted(() => {
                 />
               </template>
             </el-table-column>
-            
+
             <template #empty>
-              <el-empty description="请先选择项目，或暂无点位数据" :image-size="120">
-                <el-button type="primary" @click="handleAdd">添加点位</el-button>
+              <el-empty
+                description="请先选择项目，或暂无点位数据"
+                :image-size="120"
+              >
+                <el-button type="primary" @click="handleAdd"
+                  >添加点位</el-button
+                >
               </el-empty>
             </template>
           </el-table>
         </template>
       </el-skeleton>
 
-       <div class="mt-8 flex justify-end">
+      <div class="mt-8 flex justify-end">
         <el-pagination
           v-model:current-page="pagination.currentPage"
           v-model:page-size="pagination.pageSize"
@@ -307,7 +333,13 @@ onMounted(() => {
       append-to-body
       destroy-on-close
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="mt-4">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        class="mt-4"
+      >
         <el-form-item label="所属设备" prop="deviceId">
           <el-select
             v-model="form.deviceId"
@@ -324,9 +356,14 @@ onMounted(() => {
           </el-select>
         </el-form-item>
         <el-form-item label="点位 Key" prop="key">
-          <el-input v-model="form.key" placeholder="例如：voltage_a, temperature" maxlength="50" show-word-limit />
+          <el-input
+            v-model="form.key"
+            placeholder="例如：voltage_a, temperature"
+            maxlength="50"
+            show-word-limit
+          />
         </el-form-item>
-        
+
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="数据类型" prop="dataType">
@@ -342,9 +379,9 @@ onMounted(() => {
             <el-form-item label="显示单位">
               <el-input v-model="form.unit" placeholder="例如：V, ℃, kW" />
             </el-form-item>
-            </el-col>
+          </el-col>
         </el-row>
-        
+
         <template v-if="isModbusTcp">
           <el-alert
             type="info"
@@ -359,7 +396,7 @@ onMounted(() => {
         <div class="flex justify-end gap-3">
           <el-button @click="dialogVisible = false">取消</el-button>
           <el-button type="primary" :loading="loading" @click="submit">
-            {{ isEdit ? '保存' : '创建' }}
+            {{ isEdit ? "保存" : "创建" }}
           </el-button>
         </div>
       </template>
@@ -373,7 +410,14 @@ onMounted(() => {
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

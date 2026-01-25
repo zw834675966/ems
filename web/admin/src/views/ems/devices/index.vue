@@ -38,13 +38,13 @@ const {
   onCurrentPageChange
 } = useCrud(
   () => listDevices(projectId.value),
-  (id) => deleteDevice(projectId.value, id),
+  id => deleteDevice(projectId.value, id),
   {
     immediate: false,
     idKey: "deviceId",
     watchSource: projectId,
     onFetchSuccess: () => {
-        refreshGateways();
+      refreshGateways();
     }
   }
 );
@@ -66,27 +66,31 @@ const form = reactive({
 
 // 表单校验规则
 const rules = reactive<FormRules>({
-  gatewayId: [
-    { required: true, message: "请选择网关", trigger: "change" }
-  ],
+  gatewayId: [{ required: true, message: "请选择网关", trigger: "change" }],
   name: [
     { required: true, message: "请输入设备名称", trigger: "blur" },
-    { min: 2, max: 50, message: "设备名称长度应为 2-50 个字符", trigger: "blur" }
+    {
+      min: 2,
+      max: 50,
+      message: "设备名称长度应为 2-50 个字符",
+      trigger: "blur"
+    }
   ]
 });
 
 // 获取当前选中网关的协议类型
-const selectedGateway = computed(() => 
+const selectedGateway = computed(() =>
   gateways.value.find(g => g.gatewayId === form.gatewayId)
 );
 
-const isModbusGateway = computed(() => 
-  selectedGateway.value?.protocolType === "modbus_tcp"
+const isModbusGateway = computed(
+  () => selectedGateway.value?.protocolType === "modbus_tcp"
 );
 
-const isTcpGateway = computed(() => 
-  selectedGateway.value?.protocolType === "tcp_server" ||
-  selectedGateway.value?.protocolType === "tcp_client"
+const isTcpGateway = computed(
+  () =>
+    selectedGateway.value?.protocolType === "tcp_server" ||
+    selectedGateway.value?.protocolType === "tcp_client"
 );
 
 const gatewayOptions = computed(() =>
@@ -160,8 +164,11 @@ const submit = async () => {
   loading.value = true;
   try {
     const model = form.model.trim();
-    const addressConfig = buildAddressConfig(selectedGateway.value?.protocolType, form);
-    
+    const addressConfig = buildAddressConfig(
+      selectedGateway.value?.protocolType,
+      form
+    );
+
     let res;
     if (isEdit.value) {
       res = await updateDevice(pid, currentId.value, {
@@ -180,7 +187,9 @@ const submit = async () => {
     }
 
     if (!res.success) {
-      ElMessage.error(res.error?.message ?? (isEdit.value ? "更新失败" : "创建失败"));
+      ElMessage.error(
+        res.error?.message ?? (isEdit.value ? "更新失败" : "创建失败")
+      );
       return;
     }
     ElMessage.success(isEdit.value ? "更新成功" : "创建成功");
@@ -217,7 +226,6 @@ onMounted(() => {
 });
 </script>
 
-
 <template>
   <div class="apple-container animate-fade-in-up">
     <div class="flex-b mb-8 flex-wrap gap-4">
@@ -246,22 +254,38 @@ onMounted(() => {
 
     <el-card class="apple-shadow" shadow="never">
       <div v-if="error" class="mb-4">
-        <el-alert type="error" :closable="false" show-icon>{{ error }}</el-alert>
+        <el-alert type="error" :closable="false" show-icon>{{
+          error
+        }}</el-alert>
       </div>
 
-      <el-skeleton :rows="5" animated :loading="loading && filteredData.length === 0">
+      <el-skeleton
+        :rows="5"
+        animated
+        :loading="loading && filteredData.length === 0"
+      >
         <template #default>
           <el-table
             v-loading="loading"
             :data="filteredData"
             row-class-name="animate-fade-in-up"
           >
-            <el-table-column prop="name" label="设备名称" min-width="180" show-overflow-tooltip>
+            <el-table-column
+              prop="name"
+              label="设备名称"
+              min-width="180"
+              show-overflow-tooltip
+            >
               <template #default="{ row }">
                 <span class="font-bold text-primary">{{ row.name }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="addressConfig" label="从站地址" width="120" align="center">
+            <el-table-column
+              prop="addressConfig"
+              label="从站地址"
+              width="120"
+              align="center"
+            >
               <template #default="{ row }">
                 <el-tag v-if="row.addressConfig" type="info" class="w-12">
                   {{ getAddressLabel(row.addressConfig) }}
@@ -269,7 +293,12 @@ onMounted(() => {
                 <span v-else class="text-gray-300">-</span>
               </template>
             </el-table-column>
-            <el-table-column prop="online" label="实时状态" width="120" align="center">
+            <el-table-column
+              prop="online"
+              label="实时状态"
+              width="120"
+              align="center"
+            >
               <template #default="{ row }">
                 <el-tooltip
                   v-if="row.lastError"
@@ -282,8 +311,14 @@ onMounted(() => {
                       class="status-dot"
                       :class="row.online ? 'is-online' : 'is-error'"
                     />
-                    <span :class="row.online ? 'text-green-500 font-medium' : 'text-red-500 font-medium'">
-                      {{ row.online ? '在线' : '异常' }}
+                    <span
+                      :class="
+                        row.online
+                          ? 'text-green-500 font-medium'
+                          : 'text-red-500 font-medium'
+                      "
+                    >
+                      {{ row.online ? "在线" : "异常" }}
                     </span>
                   </div>
                 </el-tooltip>
@@ -292,15 +327,21 @@ onMounted(() => {
                     class="status-dot"
                     :class="{ 'is-online': row.online }"
                   />
-                  <span :class="row.online ? 'text-green-500 font-medium' : 'text-gray-400'">
-                    {{ row.online ? '在线' : '离线' }}
+                  <span
+                    :class="
+                      row.online
+                        ? 'text-green-500 font-medium'
+                        : 'text-gray-400'
+                    "
+                  >
+                    {{ row.online ? "在线" : "离线" }}
                   </span>
                 </div>
               </template>
             </el-table-column>
             <el-table-column prop="model" label="型号" min-width="120">
-               <template #default="{ row }">
-                <span class="text-secondary">{{ row.model || '-' }}</span>
+              <template #default="{ row }">
+                <span class="text-secondary">{{ row.model || "-" }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="deviceId" label="设备 ID" min-width="180">
@@ -311,11 +352,20 @@ onMounted(() => {
             <el-table-column prop="lastSeenAtMs" label="最后在线" width="180">
               <template #default="{ row }">
                 <span class="text-xs text-secondary">
-                  {{ row.lastSeenAtMs ? dayjs(row.lastSeenAtMs).format('YYYY-MM-DD HH:mm:ss') : '-' }}
+                  {{
+                    row.lastSeenAtMs
+                      ? dayjs(row.lastSeenAtMs).format("YYYY-MM-DD HH:mm:ss")
+                      : "-"
+                  }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="140" fixed="right" align="center">
+            <el-table-column
+              label="操作"
+              width="140"
+              fixed="right"
+              align="center"
+            >
               <template #default="{ row }">
                 <el-button
                   link
@@ -331,17 +381,22 @@ onMounted(() => {
                 />
               </template>
             </el-table-column>
-            
+
             <template #empty>
-              <el-empty description="请先选择项目，或暂无设备数据" :image-size="120">
-                <el-button type="primary" @click="handleAdd">添加设备</el-button>
+              <el-empty
+                description="请先选择项目，或暂无设备数据"
+                :image-size="120"
+              >
+                <el-button type="primary" @click="handleAdd"
+                  >添加设备</el-button
+                >
               </el-empty>
             </template>
           </el-table>
         </template>
       </el-skeleton>
 
-       <div class="mt-8 flex justify-end">
+      <div class="mt-8 flex justify-end">
         <el-pagination
           v-model:current-page="pagination.currentPage"
           v-model:page-size="pagination.pageSize"
@@ -361,7 +416,13 @@ onMounted(() => {
       append-to-body
       destroy-on-close
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="mt-4">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        class="mt-4"
+      >
         <el-form-item label="所属网关" prop="gatewayId">
           <el-select
             v-model="form.gatewayId"
@@ -380,11 +441,16 @@ onMounted(() => {
             仅显示当前项目下的运行网关
           </div>
         </el-form-item>
-        
+
         <el-form-item label="设备名称" prop="name">
-          <el-input v-model="form.name" placeholder="例如：1号变压器" maxlength="50" show-word-limit />
+          <el-input
+            v-model="form.name"
+            placeholder="例如：1号变压器"
+            maxlength="50"
+            show-word-limit
+          />
         </el-form-item>
-        
+
         <el-form-item label="设备型号">
           <el-input v-model="form.model" placeholder="可选输入设备型号" />
         </el-form-item>
@@ -394,7 +460,12 @@ onMounted(() => {
           <div class="bg-secondary p-4 rounded-lg mb-6 text-sm">
             <h4 class="text-sm mb-4">Modbus 地址配置</h4>
             <el-form-item label="从站地址 (Unit ID)" required class="mb-0">
-              <el-input-number v-model="form.unitId" :min="1" :max="247" class="w-full" />
+              <el-input-number
+                v-model="form.unitId"
+                :min="1"
+                :max="247"
+                class="w-full"
+              />
               <div class="mt-2 text-xs text-secondary">
                 Modbus 从站地址范围：1-247（文档口径：unitId，兼容 slave_id）
               </div>
@@ -421,7 +492,7 @@ onMounted(() => {
         <div class="flex justify-end gap-3">
           <el-button @click="dialogVisible = false">取消</el-button>
           <el-button type="primary" :loading="loading" @click="submit">
-            {{ isEdit ? '保存' : '创建' }}
+            {{ isEdit ? "保存" : "创建" }}
           </el-button>
         </div>
       </template>
@@ -431,35 +502,51 @@ onMounted(() => {
 
 <style scoped>
 .status-dot {
+  position: relative;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
   background: var(--color-gray-200);
-  position: relative;
+  border-radius: 50%;
 
   &.is-online {
     background: var(--color-green);
-    box-shadow: 0 0 0 rgba(40, 205, 65, 0.4);
+    box-shadow: 0 0 0 rgb(40 205 65 / 40%);
     animation: pulse 2s infinite;
   }
 
   &.is-error {
     background: var(--color-red);
-    box-shadow: 0 0 0 rgba(255, 59, 48, 0.4);
+    box-shadow: 0 0 0 rgb(255 59 48 / 40%);
     animation: pulse-error 2s infinite;
   }
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(40, 205, 65, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(40, 205, 65, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(40, 205, 65, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgb(40 205 65 / 70%);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgb(40 205 65 / 0%);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgb(40 205 65 / 0%);
+  }
 }
 
 @keyframes pulse-error {
-  0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 59 48 / 70%);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgb(255 59 48 / 0%);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgb(255 59 48 / 0%);
+  }
 }
 
 .animate-fade-in-up {
@@ -467,7 +554,14 @@ onMounted(() => {
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

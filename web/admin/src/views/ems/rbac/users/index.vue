@@ -20,7 +20,10 @@ const users = ref<RbacUserDto[]>([]);
 const roles = ref<RbacRoleDto[]>([]);
 
 const roleOptions = computed(() =>
-  roles.value.map(item => ({ label: `${item.roleCode} (${item.name})`, value: item.roleCode }))
+  roles.value.map(item => ({
+    label: `${item.roleCode} (${item.name})`,
+    value: item.roleCode
+  }))
 );
 
 const createDialogOpen = ref(false);
@@ -48,7 +51,10 @@ const refresh = async () => {
   error.value = "";
   loading.value = true;
   try {
-    const [userRes, roleRes] = await Promise.all([listRbacUsers(), listRbacRoles()]);
+    const [userRes, roleRes] = await Promise.all([
+      listRbacUsers(),
+      listRbacRoles()
+    ]);
     if (!roleRes.success) {
       error.value = roleRes.error?.message ?? "加载角色失败";
       return;
@@ -67,7 +73,12 @@ const refresh = async () => {
 };
 
 const openCreate = () => {
-  createForm.value = { username: "", password: "", status: "active", roles: [] };
+  createForm.value = {
+    username: "",
+    password: "",
+    status: "active",
+    roles: []
+  };
   createDialogOpen.value = true;
 };
 
@@ -147,7 +158,10 @@ const submitRoles = async () => {
   if (!rolesUser.value) return;
   loading.value = true;
   try {
-    const res = await setRbacUserRoles(rolesUser.value.userId, rolesForm.value.roles);
+    const res = await setRbacUserRoles(
+      rolesUser.value.userId,
+      rolesForm.value.roles
+    );
     if (!res.success) {
       ElMessage.error(res.error?.message ?? "更新失败");
       return;
@@ -210,7 +224,12 @@ onMounted(() => {
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" @click="openRoles(row)">角色</el-button>
-            <el-button size="small" type="danger" plain @click="confirmDeleteHint">
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              @click="confirmDeleteHint"
+            >
               删除
             </el-button>
           </template>
@@ -317,4 +336,3 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
-

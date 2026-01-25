@@ -73,9 +73,9 @@ const loadMetadata = async () => {
 const refreshValues = async () => {
   if (!projectId.value) return;
   try {
-     // 不传 pointId 获取项目下所有点位实时值
-     // @ts-ignore: getRealtime 定义可能需要更新以支持可选 pointId
-    const res = await getRealtime(projectId.value, ""); 
+    // 不传 pointId 获取项目下所有点位实时值
+    // @ts-ignore: getRealtime 定义可能需要更新以支持可选 pointId
+    const res = await getRealtime(projectId.value, "");
     if (res.success && res.data) {
       const map = new Map<string, RealtimeValueDto>();
       res.data.forEach(item => {
@@ -103,11 +103,14 @@ const toggleAutoRefresh = (val: boolean) => {
 // 生命周期
 // ============================================================================
 
-watch(() => projectId.value, async () => {
-  realtimeValues.value.clear();
-  await loadMetadata();
-  refreshValues();
-});
+watch(
+  () => projectId.value,
+  async () => {
+    realtimeValues.value.clear();
+    await loadMetadata();
+    refreshValues();
+  }
+);
 
 onMounted(() => {
   if (projectId.value) {
@@ -130,24 +133,31 @@ onUnmounted(() => {
         <div class="flex items-center justify-between flex-wrap gap-2">
           <div>
             <div class="text-base font-medium">实时数据监控</div>
-            <div class="text-xs text-gray-400">实时查看所有点位的最新采集值与质量状态</div>
+            <div class="text-xs text-gray-400">
+              实时查看所有点位的最新采集值与质量状态
+            </div>
           </div>
           <EmsProjectSelector v-model="projectId" />
         </div>
       </template>
-      
+
       <div class="flex items-center justify-between">
         <div class="text-sm text-gray-500">
-          共监控 <span class="font-bold text-primary">{{ points.length }}</span> 个点位
+          共监控
+          <span class="font-bold text-primary">{{ points.length }}</span> 个点位
           <span v-if="lastRefreshed" class="ml-4 text-xs">
-            最后更新: {{ dayjs(lastRefreshed).format('HH:mm:ss') }}
+            最后更新: {{ dayjs(lastRefreshed).format("HH:mm:ss") }}
           </span>
         </div>
         <div class="flex items-center gap-3">
-           <span class="text-sm text-gray-600">自动刷新(3s)</span>
-           <el-switch v-model="autoRefresh" @change="toggleAutoRefresh" />
-           <el-divider direction="vertical" />
-           <el-button :icon="useRenderIcon('ep:refresh')" circle @click="refreshValues" />
+          <span class="text-sm text-gray-600">自动刷新(3s)</span>
+          <el-switch v-model="autoRefresh" @change="toggleAutoRefresh" />
+          <el-divider direction="vertical" />
+          <el-button
+            :icon="useRenderIcon('ep:refresh')"
+            circle
+            @click="refreshValues"
+          />
         </div>
       </div>
     </el-card>
@@ -159,7 +169,7 @@ onUnmounted(() => {
         :data="tableData"
         style="width: 100%"
         row-key="pointId"
-        height="calc(100vh - 280px)" 
+        height="calc(100vh - 280px)"
       >
         <el-table-column label="点位名称" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">
@@ -170,14 +180,16 @@ onUnmounted(() => {
 
         <el-table-column label="所属设备" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">
-             {{ row.deviceName }}
+            {{ row.deviceName }}
           </template>
         </el-table-column>
 
         <el-table-column label="实时值" min-width="140">
           <template #default="{ row }">
             <div v-if="row.hasValue" class="flex items-baseline gap-1">
-              <span class="text-lg font-bold font-mono text-primary">{{ row.value }}</span>
+              <span class="text-lg font-bold font-mono text-primary">{{
+                row.value
+              }}</span>
               <span class="text-xs text-gray-500">{{ row.unit }}</span>
             </div>
             <span v-else class="text-gray-300">-</span>
@@ -187,8 +199,16 @@ onUnmounted(() => {
         <el-table-column label="质量" width="100" align="center">
           <template #default="{ row }">
             <template v-if="row.hasValue">
-               <el-tag v-if="row.quality === 'good' || !row.quality" type="success" size="small" effect="dark">Good</el-tag>
-               <el-tag v-else type="warning" size="small" effect="dark">{{ row.quality }}</el-tag>
+              <el-tag
+                v-if="row.quality === 'good' || !row.quality"
+                type="success"
+                size="small"
+                effect="dark"
+                >Good</el-tag
+              >
+              <el-tag v-else type="warning" size="small" effect="dark">{{
+                row.quality
+              }}</el-tag>
             </template>
             <span v-else class="text-gray-300">-</span>
           </template>
@@ -197,7 +217,7 @@ onUnmounted(() => {
         <el-table-column label="更新时间" width="180" align="right">
           <template #default="{ row }">
             <span v-if="row.tsMs" class="font-mono text-xs text-gray-500">
-               {{ dayjs(row.tsMs).format('YYYY-MM-DD HH:mm:ss.SSS') }}
+              {{ dayjs(row.tsMs).format("YYYY-MM-DD HH:mm:ss.SSS") }}
             </span>
             <span v-else class="text-gray-300">-</span>
           </template>
@@ -209,10 +229,10 @@ onUnmounted(() => {
 
 <style scoped>
 .ems-page {
-  padding: var(--space-6);
   max-width: 1600px;
-  margin: 0 auto;
   height: calc(100vh - 100px); /* 适应全屏高度 */
+  padding: var(--space-6);
+  margin: 0 auto;
 }
 
 .animate-fade-in-up {
@@ -220,7 +240,14 @@ onUnmounted(() => {
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

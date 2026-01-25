@@ -39,8 +39,8 @@ const {
   onCurrentPageChange
 } = useCrud(
   () => listGateways(projectId.value),
-  (id) => deleteGateway(projectId.value, id),
-  { 
+  id => deleteGateway(projectId.value, id),
+  {
     immediate: false,
     idKey: "gatewayId",
     watchSource: projectId
@@ -70,7 +70,12 @@ const form = reactive({
 const rules = reactive<FormRules>({
   name: [
     { required: true, message: "请输入网关名称", trigger: "blur" },
-    { min: 2, max: 50, message: "网关名称长度应为 2-50 个字符", trigger: "blur" }
+    {
+      min: 2,
+      max: 50,
+      message: "网关名称长度应为 2-50 个字符",
+      trigger: "blur"
+    }
   ],
   modbusHost: [
     { required: true, message: "请输入 Modbus 服务器地址", trigger: "blur" }
@@ -167,7 +172,7 @@ const submit = async () => {
     const name = form.name.trim();
     const status = form.status.trim();
     const protocolConfig = buildProtocolConfig(form.protocolType, form);
-    
+
     let res;
     if (isEdit.value) {
       res = await updateGateway(pid, currentId.value, {
@@ -186,7 +191,9 @@ const submit = async () => {
     }
 
     if (!res.success) {
-      ElMessage.error(res.error?.message ?? (isEdit.value ? "更新失败" : "创建失败"));
+      ElMessage.error(
+        res.error?.message ?? (isEdit.value ? "更新失败" : "创建失败")
+      );
       return;
     }
     ElMessage.success(isEdit.value ? "更新成功" : "创建成功");
@@ -205,7 +212,6 @@ onMounted(() => {
   }
 });
 </script>
-
 
 <template>
   <div class="apple-container animate-fade-in-up">
@@ -235,29 +241,47 @@ onMounted(() => {
 
     <el-card class="apple-shadow" shadow="never">
       <div v-if="error" class="mb-4">
-        <el-alert type="error" :closable="false" show-icon>{{ error }}</el-alert>
+        <el-alert type="error" :closable="false" show-icon>{{
+          error
+        }}</el-alert>
       </div>
 
-      <el-skeleton :rows="5" animated :loading="loading && filteredData.length === 0">
+      <el-skeleton
+        :rows="5"
+        animated
+        :loading="loading && filteredData.length === 0"
+      >
         <template #default>
           <el-table
             v-loading="loading"
             :data="filteredData"
             row-class-name="animate-fade-in-up"
           >
-            <el-table-column prop="name" label="网关名称" min-width="180" show-overflow-tooltip>
+            <el-table-column
+              prop="name"
+              label="网关名称"
+              min-width="180"
+              show-overflow-tooltip
+            >
               <template #default="{ row }">
                 <span class="font-bold text-primary">{{ row.name }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="protocolType" label="协议类型" width="140">
               <template #default="{ row }">
-                <el-tag :type="row.protocolType === 'mqtt' ? 'primary' : 'warning'">
+                <el-tag
+                  :type="row.protocolType === 'mqtt' ? 'primary' : 'warning'"
+                >
                   {{ getProtocolLabel(row.protocolType) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="online" label="实时状态" width="120" align="center">
+            <el-table-column
+              prop="online"
+              label="实时状态"
+              width="120"
+              align="center"
+            >
               <template #default="{ row }">
                 <el-tooltip
                   v-if="row.lastError"
@@ -270,8 +294,14 @@ onMounted(() => {
                       class="status-dot"
                       :class="row.online ? 'is-online' : 'is-error'"
                     />
-                    <span :class="row.online ? 'text-green-500 font-medium' : 'text-red-500 font-medium'">
-                      {{ row.online ? '在线' : '异常' }}
+                    <span
+                      :class="
+                        row.online
+                          ? 'text-green-500 font-medium'
+                          : 'text-red-500 font-medium'
+                      "
+                    >
+                      {{ row.online ? "在线" : "异常" }}
                     </span>
                   </div>
                 </el-tooltip>
@@ -280,8 +310,14 @@ onMounted(() => {
                     class="status-dot"
                     :class="{ 'is-online': row.online }"
                   />
-                  <span :class="row.online ? 'text-green-500 font-medium' : 'text-gray-400'">
-                    {{ row.online ? '在线' : '离线' }}
+                  <span
+                    :class="
+                      row.online
+                        ? 'text-green-500 font-medium'
+                        : 'text-gray-400'
+                    "
+                  >
+                    {{ row.online ? "在线" : "离线" }}
                   </span>
                 </div>
               </template>
@@ -294,11 +330,20 @@ onMounted(() => {
             <el-table-column prop="lastSeenAtMs" label="最后在线" width="180">
               <template #default="{ row }">
                 <span class="text-xs text-secondary">
-                  {{ row.lastSeenAtMs ? dayjs(row.lastSeenAtMs).format('YYYY-MM-DD HH:mm:ss') : '-' }}
+                  {{
+                    row.lastSeenAtMs
+                      ? dayjs(row.lastSeenAtMs).format("YYYY-MM-DD HH:mm:ss")
+                      : "-"
+                  }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right" align="center">
+            <el-table-column
+              label="操作"
+              width="180"
+              fixed="right"
+              align="center"
+            >
               <template #default="{ row }">
                 <el-button
                   link
@@ -323,17 +368,22 @@ onMounted(() => {
                 />
               </template>
             </el-table-column>
-            
+
             <template #empty>
-              <el-empty description="请先选择项目，或暂无网关数据" :image-size="120">
-                <el-button type="primary" @click="handleAdd">添加网关</el-button>
+              <el-empty
+                description="请先选择项目，或暂无网关数据"
+                :image-size="120"
+              >
+                <el-button type="primary" @click="handleAdd"
+                  >添加网关</el-button
+                >
               </el-empty>
             </template>
           </el-table>
         </template>
       </el-skeleton>
 
-       <div class="mt-8 flex justify-end">
+      <div class="mt-8 flex justify-end">
         <el-pagination
           v-model:current-page="pagination.currentPage"
           v-model:page-size="pagination.pageSize"
@@ -353,11 +403,22 @@ onMounted(() => {
       append-to-body
       destroy-on-close
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="mt-4">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+        class="mt-4"
+      >
         <el-form-item label="网关名称" prop="name">
-          <el-input v-model="form.name" placeholder="例如：1号楼中心网关" maxlength="50" show-word-limit />
+          <el-input
+            v-model="form.name"
+            placeholder="例如：1号楼中心网关"
+            maxlength="50"
+            show-word-limit
+          />
         </el-form-item>
-        
+
         <el-form-item label="协议类型" required>
           <el-select v-model="form.protocolType" class="w-full">
             <el-option
@@ -376,17 +437,31 @@ onMounted(() => {
             <el-row :gutter="12">
               <el-col :span="16">
                 <el-form-item label="服务器地址" required>
-                  <el-input v-model="form.modbusHost" placeholder="192.168.1.100" />
+                  <el-input
+                    v-model="form.modbusHost"
+                    placeholder="192.168.1.100"
+                  />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
                 <el-form-item label="端口">
-                  <el-input-number v-model="form.modbusPort" :min="1" :max="65535" class="w-full" />
+                  <el-input-number
+                    v-model="form.modbusPort"
+                    :min="1"
+                    :max="65535"
+                    class="w-full"
+                  />
                 </el-form-item>
               </el-col>
             </el-row>
             <el-form-item label="轮询间隔 (ms)" class="mb-0">
-              <el-input-number v-model="form.modbusPollInterval" :min="100" :max="60000" :step="100" class="w-full" />
+              <el-input-number
+                v-model="form.modbusPollInterval"
+                :min="100"
+                :max="60000"
+                :step="100"
+                class="w-full"
+              />
             </el-form-item>
           </div>
         </template>
@@ -396,7 +471,12 @@ onMounted(() => {
           <div class="bg-secondary p-4 rounded-lg mb-6">
             <h4 class="text-sm mb-4">TCP Server 配置</h4>
             <el-form-item label="监听端口" required class="mb-0">
-              <el-input-number v-model="form.tcpServerPort" :min="1" :max="65535" class="w-full" />
+              <el-input-number
+                v-model="form.tcpServerPort"
+                :min="1"
+                :max="65535"
+                class="w-full"
+              />
             </el-form-item>
           </div>
         </template>
@@ -408,12 +488,20 @@ onMounted(() => {
             <el-row :gutter="12">
               <el-col :span="16">
                 <el-form-item label="服务器地址" required class="mb-0">
-                  <el-input v-model="form.tcpClientHost" placeholder="192.168.1.100" />
+                  <el-input
+                    v-model="form.tcpClientHost"
+                    placeholder="192.168.1.100"
+                  />
                 </el-form-item>
               </el-col>
               <el-col :span="8">
                 <el-form-item label="端口" class="mb-0">
-                  <el-input-number v-model="form.tcpClientPort" :min="1" :max="65535" class="w-full" />
+                  <el-input-number
+                    v-model="form.tcpClientPort"
+                    :min="1"
+                    :max="65535"
+                    class="w-full"
+                  />
                 </el-form-item>
               </el-col>
             </el-row>
@@ -440,7 +528,7 @@ onMounted(() => {
         <div class="flex justify-end gap-3">
           <el-button @click="dialogVisible = false">取消</el-button>
           <el-button type="primary" :loading="loading" @click="submit">
-            {{ isEdit ? '保存' : '创建' }}
+            {{ isEdit ? "保存" : "创建" }}
           </el-button>
         </div>
       </template>
@@ -450,35 +538,51 @@ onMounted(() => {
 
 <style scoped>
 .status-dot {
+  position: relative;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
   background: var(--color-gray-200);
-  position: relative;
+  border-radius: 50%;
 
   &.is-online {
     background: var(--color-green);
-    box-shadow: 0 0 0 rgba(40, 205, 65, 0.4);
+    box-shadow: 0 0 0 rgb(40 205 65 / 40%);
     animation: pulse 2s infinite;
   }
 
   &.is-error {
     background: var(--color-red);
-    box-shadow: 0 0 0 rgba(255, 59, 48, 0.4);
+    box-shadow: 0 0 0 rgb(255 59 48 / 40%);
     animation: pulse-error 2s infinite;
   }
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(40, 205, 65, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(40, 205, 65, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(40, 205, 65, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgb(40 205 65 / 70%);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgb(40 205 65 / 0%);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgb(40 205 65 / 0%);
+  }
 }
 
 @keyframes pulse-error {
-  0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 59 48 / 70%);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgb(255 59 48 / 0%);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgb(255 59 48 / 0%);
+  }
 }
 
 .animate-fade-in-up {
@@ -486,7 +590,14 @@ onMounted(() => {
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

@@ -213,13 +213,7 @@ mod tests {
     async fn require_project_scope_sets_scope() {
         unsafe { std::env::set_var("EMS_JWT_SECRET", "test-secret") };
         let state = build_state();
-        let ctx = TenantContext::new(
-            "tenant-1",
-            "user-1",
-            Vec::new(),
-            Vec::new(),
-            None,
-        );
+        let ctx = TenantContext::new("tenant-1", "user-1", Vec::new(), Vec::new(), None);
         let jwt = JwtManager::new("test-secret".to_string(), 3600, 7200);
         let tokens = jwt.issue_tokens(&ctx).expect("tokens");
 

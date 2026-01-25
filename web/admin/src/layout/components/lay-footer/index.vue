@@ -7,8 +7,7 @@ const TITLE = getConfig("Title");
 <template>
   <footer
     class="layout-footer text-[rgba(0,0,0,0.6)] dark:text-[rgba(220,220,242,0.8)]"
-  >
-  </footer>
+  />
 </template>
 
 <style lang="scss" scoped>

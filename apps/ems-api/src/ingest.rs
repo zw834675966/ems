@@ -654,7 +654,9 @@ impl TcpServerProtocolManager {
         for gw in gateways {
             active_gateway_ids.insert(gw.gateway_id.clone());
             let gw_id = gw.gateway_id.clone();
-            current_tasks.entry(gw_id).or_insert_with(|| self.spawn_gateway_task(gw));
+            current_tasks
+                .entry(gw_id)
+                .or_insert_with(|| self.spawn_gateway_task(gw));
         }
 
         current_tasks.retain(|id, handle| {

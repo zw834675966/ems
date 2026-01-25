@@ -73,7 +73,9 @@ describe("EmsProjectSelector", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadEmsProjectId.mockReturnValue("");
-    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(null) };
+    (navigator as any).clipboard = {
+      writeText: vi.fn().mockResolvedValue(null)
+    };
   });
 
   it("loads projects and selects default on success", async () => {
@@ -100,7 +102,9 @@ describe("EmsProjectSelector", () => {
     expect(listProjects).toHaveBeenCalled();
     expect(wrapper.emitted("update:modelValue")?.[0]).toEqual(["project-1"]);
 
-    const select = wrapper.get<HTMLSelectElement>("[data-test=\"project-select\"]");
+    const select = wrapper.get<HTMLSelectElement>(
+      '[data-test="project-select"]'
+    );
     await select.setValue("project-2");
     expect(saveEmsProjectId).toHaveBeenCalledWith("project-2");
   });
@@ -125,7 +129,9 @@ describe("EmsProjectSelector", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("Forbidden");
     const buttons = wrapper.findAll("button");
-    const copyButton = buttons.find(btn => btn.text().includes("复制 projectId"));
+    const copyButton = buttons.find(btn =>
+      btn.text().includes("复制 projectId")
+    );
     expect(copyButton?.attributes("disabled")).toBeDefined();
   });
 });
