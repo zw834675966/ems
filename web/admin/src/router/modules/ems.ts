@@ -1,5 +1,4 @@
-
-import { type RouteConfigsTable } from "@/layout/types";
+import type { RouteConfigsTable } from "@/layout/types";
 
 const Layout = () => import("@/layout/index.vue");
 
@@ -74,6 +73,15 @@ export default {
       meta: {
         title: "历史数据",
         icon: "ep:trend-charts"
+      }
+    },
+    {
+      path: "/ems/modbus-snapshot",
+      name: "EmsModbusSnapshot",
+      component: () => import("@/views/ems/modbus-snapshot/index.vue"),
+      meta: {
+        title: "Modbus 截图/读取",
+        icon: "ep:camera"
       }
     },
     {

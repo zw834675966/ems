@@ -9,6 +9,17 @@ pub mod error_codes {
     pub const INVALID_REQUEST: &str = "INVALID.REQUEST";
     pub const RESOURCE_NOT_FOUND: &str = "RESOURCE.NOT_FOUND";
     pub const INTERNAL_ERROR: &str = "INTERNAL.ERROR";
+
+    // Modbus snapshot stable error codes
+    pub const MODBUS_CONFIG_MISSING: &str = "MODBUS.CONFIG_MISSING";
+    pub const MODBUS_INVALID_FUNCTION_CODE: &str = "MODBUS.INVALID_FUNCTION_CODE";
+    pub const MODBUS_INVALID_ADDRESS_RANGE: &str = "MODBUS.INVALID_ADDRESS_RANGE";
+    pub const MODBUS_INVALID_QUANTITY: &str = "MODBUS.INVALID_QUANTITY";
+    pub const MODBUS_INVALID_VALUE: &str = "MODBUS.INVALID_VALUE";
+    pub const MODBUS_CONNECT_TIMEOUT: &str = "MODBUS.CONNECT_TIMEOUT";
+    pub const MODBUS_REQUEST_TIMEOUT: &str = "MODBUS.REQUEST_TIMEOUT";
+    pub const MODBUS_DEVICE_BUSY: &str = "MODBUS.DEVICE_BUSY";
+    pub const MODBUS_EXCEPTION: &str = "MODBUS.EXCEPTION";
 }
 
 /// 标准 API 响应封装。
@@ -20,7 +31,7 @@ pub struct ApiResponse<T> {
 }
 
 /// 失败响应的错误体。
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ApiError {
     pub code: String,
     pub message: String,
@@ -405,6 +416,112 @@ pub struct MeasurementValueDto {
     pub ts_ms: i64,
     pub value: String,
     pub quality: Option<String>,
+}
+
+// ============================================================================
+// Modbus snapshot (read + write) API
+// ============================================================================
+
+/// Modbus snapshot request: supports both reads and writes.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModbusSnapshotRequest {
+    /// Target gateway ID (must be a modbus_tcp gateway).
+    pub gateway_id: String,
+    /// Optional device ID (used to validate unitId if provided).
+    pub device_id: Option<String>,
+    /// Unit ID (1..=247). If omitted, backend will try to derive from device.addressConfig.
+    pub unit_id: Option<u8>,
+    /// Read items (0-based addressing).
+    #[serde(default)]
+    pub reads: Vec<ModbusReadItem>,
+    /// Write items (0-based addressing).
+    #[serde(default)]
+    pub writes: Vec<ModbusWriteItem>,
+
+    /// Optional lock wait timeout (ms). If exceeded, returns 409 MODBUS.DEVICE_BUSY.
+    pub lock_timeout_ms: Option<u64>,
+    /// Optional connect timeout (ms).
+    pub connect_timeout_ms: Option<u64>,
+    /// Optional single-request timeout (ms).
+    pub request_timeout_ms: Option<u64>,
+    /// Optional max retries for read/write timeout or transport errors.
+    pub max_retries: Option<u32>,
+    /// Optional retry interval (ms).
+    pub retry_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModbusReadItem {
+    /// Function code: 1/2/3/4
+    pub function_code: u8,
+    /// 0-based start address
+    pub address: u16,
+    /// quantity (bits or registers)
+    pub quantity: u16,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModbusWriteItem {
+    /// Function code: 5/6 (single coil / single register)
+    pub function_code: u8,
+    /// 0-based address
+    pub address: u16,
+    /// value: coil uses 0/1, register uses 0..65535
+    pub value: u16,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModbusSnapshotResponse {
+    pub captured_at_ms: i64,
+    pub latency_ms: i64,
+    pub target: ModbusSnapshotTarget,
+    #[serde(default)]
+    pub results: Vec<ModbusReadResult>,
+    #[serde(default)]
+    pub write_results: Vec<ModbusWriteResult>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModbusSnapshotTarget {
+    pub gateway_id: String,
+    pub device_id: Option<String>,
+    pub unit_id: u8,
+    pub host: String,
+    pub port: u16,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModbusReadResult {
+    pub function_code: u8,
+    pub address: u16,
+    pub quantity: u16,
+    pub raw: ModbusRawValue,
+    pub error: Option<ApiError>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModbusWriteResult {
+    pub function_code: u8,
+    pub address: u16,
+    pub value: u16,
+    pub ok: bool,
+    pub error: Option<ApiError>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModbusRawValue {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bits: Option<Vec<bool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registers: Option<Vec<u16>>,
 }
 
 /// 命令创建请求体。

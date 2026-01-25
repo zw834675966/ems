@@ -73,11 +73,11 @@
 //!     └─ /projects/:project_id/collection-strategies/:strategy_id      - 删除策略（DELETE）
 //! ```
 
-use super::handlers::*;
 use super::AppState;
+use super::handlers::*;
 use axum::{
-    routing::{delete, get, post, put},
     Router,
+    routing::{delete, get, post, put},
 };
 
 /// 创建 API 路由器
@@ -141,6 +141,10 @@ pub fn create_api_router() -> Router<AppState> {
         .route(
             "/projects/:project_id/points/:point_id/test",
             post(test_point),
+        )
+        .route(
+            "/projects/:project_id/modbus/snapshot",
+            post(modbus_snapshot),
         )
         .route(
             "/projects/:project_id/point-mappings",
