@@ -42,7 +42,13 @@ export default ({ mode }: ConfigEnv): UserConfigExport => {
       host: "0.0.0.0",
       // 本地跨域代理 https://cn.vitejs.dev/config/server-options.html#server-proxy
       proxy: {
-        "^/(login|refresh-token|get-async-routes|projects|health|rbac)": {
+        // 统一所有 /api 开头的请求到后端
+        "/api": {
+          target: apiBase,
+          changeOrigin: true
+        },
+        // 兼容旧的或直接调用的路径
+        "^/(login|refresh-token|get-async-routes|projects|health|rbac|points)": {
           target: apiBase,
           changeOrigin: true
         }

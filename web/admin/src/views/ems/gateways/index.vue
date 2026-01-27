@@ -10,6 +10,7 @@ import {
   testGateway,
   type GatewayDto
 } from "@/api/ems/gateways";
+import { Loading } from "@element-plus/icons-vue";
 import EmsProjectSelector from "@/components/EmsProjectSelector/index.vue";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { useCrud } from "@/components/ReCrud/useCrud";
@@ -43,15 +44,26 @@ const {
   {
     immediate: false,
     idKey: "gatewayId",
-    watchSource: projectId
+    // 取消自动 watch，改为手动控制以注入 autoTest 逻辑
+    watchSource: undefined
   }
 );
+// 手动监听 projecId 变化
+import { watch } from "vue";
+watch(projectId, () => {
+    if (projectId.value) {
+        handleFetchWithAutoTest();
+    }
+});
 
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const currentId = ref("");
 const formRef = ref<FormInstance>();
 const testingGateways = ref<Set<string>>(new Set());
+// 自动测试状态
+const autoTesting = ref(false);
+const autoTestProgress = ref("");
 
 const form = reactive({
   name: "",
@@ -126,6 +138,97 @@ const handleEdit = (row: GatewayDto) => {
   });
 };
 
+/**
+ * 检查网关是否有有效的 Host 配置，用于决定是否进行测试
+ */
+const hasValidConfig = (row: GatewayDto): boolean => {
+  if (!row.protocolConfig) return false;
+  try {
+    const cfg = JSON.parse(row.protocolConfig);
+    return !!(cfg.host || cfg.modbusHost || cfg.tcpClientHost);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * 静默测试单个网关（不刷新全表，仅更新当前行）
+ */
+const performSilentTest = async (row: GatewayDto) => {
+  if (!projectId.value || !row.gatewayId) return;
+  
+  // 仅更新当前行的状态为 "测试中" 视觉反馈
+  // 这里我们不改变 row.online，而是利用 testingGateways 来控制加载状态或显示
+  testingGateways.value.add(row.gatewayId);
+  
+  try {
+    const res = await testGateway(projectId.value, row.gatewayId);
+    if (res.success && res.data) {
+      const result = res.data;
+      // 直接修改本地数据，避免全表刷新
+      if (result.success) {
+        row.online = true;
+        row.lastSeenAtMs = result.testedAtMs;
+        row.lastError = undefined; // 清除错误
+      } else {
+        // 如果物理连接失败，标记为离线
+        row.online = false;
+        row.lastError = result.error || "连接测试失败";
+      }
+    }
+  } catch (e) {
+    // 保持原有状态或标记未知
+  } finally {
+    testingGateways.value.delete(row.gatewayId);
+  }
+};
+
+/**
+ * 执行自动批量测试（带并发控制）
+ */
+const executeAutoTest = async (gateways: GatewayDto[]) => {
+  if (gateways.length === 0) return;
+  
+  autoTesting.value = true;
+  autoTestProgress.value = "正在检测网关连通性...";
+  
+  const CONCURRENCY = 3; // 最大并发数
+  const queue = [...gateways];
+  
+  // 过滤掉没有配置 HOST 的，避免无意义请求
+  const validQueue = queue.filter(g => hasValidConfig(g));
+  let completed = 0;
+  const total = validQueue.length;
+
+  const worker = async () => {
+    while (validQueue.length > 0) {
+      const gateway = validQueue.shift();
+      if (!gateway) break;
+      
+      await performSilentTest(gateway);
+      completed++;
+    }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+  } finally {
+    autoTesting.value = false;
+    autoTestProgress.value = "";
+    // 可选：结束后提示
+    // ElMessage.info(`网关检测完成: ${completed}/${total}`);
+  }
+};
+
+// 包装原始的 fetchList 以触发自动测试
+const handleFetchWithAutoTest = async () => {
+  await fetchList();
+  // 数据加载完成后，启动自动测试
+  if (filteredData.value && filteredData.value.length > 0) {
+    executeAutoTest(filteredData.value);
+  }
+};
+
 const handleTest = async (row: GatewayDto) => {
   testingGateways.value.add(row.gatewayId);
   try {
@@ -134,11 +237,16 @@ const handleTest = async (row: GatewayDto) => {
       const result = res.data;
       if (result.success) {
         ElMessage.success(`测试成功: 延迟 ${result.latencyMs}ms`);
+        // 手动测试成功，立即更新视图状态
+        row.online = true;
+        row.lastSeenAtMs = result.testedAtMs;
+        row.lastError = undefined;
       } else {
         ElMessage.error(`测试失败: ${result.error}`);
+        row.online = false;
+        row.lastError = result.error;
       }
-      // 刷新列表以更新状态
-      await fetchList();
+      // 不再调用 fetchList()，仅前端更新
     } else {
       ElMessage.error("测试请求失败");
     }
@@ -208,7 +316,7 @@ const submit = async () => {
 
 onMounted(() => {
   if (projectId.value) {
-    fetchList();
+    handleFetchWithAutoTest();
   }
 });
 </script>
@@ -278,10 +386,15 @@ onMounted(() => {
             </el-table-column>
             <el-table-column
               prop="online"
-              label="实时状态"
               width="120"
               align="center"
             >
+              <template #header>
+                 <div class="flex-c gap-1 justify-center">
+                    <span>实时状态</span>
+                    <el-icon v-if="autoTesting" class="is-loading text-primary"><Loading /></el-icon>
+                 </div>
+              </template>
               <template #default="{ row }">
                 <el-tooltip
                   v-if="row.lastError"

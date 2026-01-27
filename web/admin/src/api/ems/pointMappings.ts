@@ -7,6 +7,7 @@ export type PointMappingDto = {
   pointId: string;
   sourceType: string;
   address: string;
+  writable: boolean;
   scale?: number;
   offset?: number;
   /** 协议细节配置 JSON 字符串 */
@@ -17,6 +18,7 @@ export type CreatePointMappingRequest = {
   pointId: string;
   sourceType: string;
   address: string;
+  writable?: boolean;
   scale?: number;
   offset?: number;
   protocolDetail?: string;

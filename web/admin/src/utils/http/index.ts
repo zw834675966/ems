@@ -16,6 +16,8 @@ import { router } from "@/router";
 
 // 相关配置请参考：www.axios-js.com/zh-cn/docs/#axios-request-config-1
 const defaultConfig: AxiosRequestConfig = {
+  // 统一走后端 `/api` 前缀，避免与前端 SPA 路由（如 `/login`）冲突
+  baseURL: "/api",
   // 请求超时时间
   timeout: 10000,
   headers: {

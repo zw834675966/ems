@@ -49,6 +49,15 @@ export default {
       }
     },
     {
+      path: "/ems/point-mappings",
+      name: "EmsPointMappings",
+      component: () => import("@/views/ems/point-mappings/index.vue"),
+      meta: {
+        title: "点位映射",
+        icon: "ep:connection"
+      }
+    },
+    {
       path: "/ems/collection-strategies",
       name: "EmsCollectionStrategies",
       component: () => import("@/views/ems/collection-strategies/index.vue"),
