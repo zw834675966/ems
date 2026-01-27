@@ -246,7 +246,7 @@ const handleTest = async (row: GatewayDto) => {
         row.online = false;
         row.lastError = result.error;
       }
-      // 不再调用 fetchList()，仅前端更新
+      await fetchList();
     } else {
       ElMessage.error("测试请求失败");
     }
