@@ -6,7 +6,6 @@
 use crate::error::StorageError;
 use async_trait::async_trait;
 use domain::RawEvent;
-use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 
 /// WAL 条目，包含唯一 ID 和原始事件。
@@ -37,129 +36,6 @@ pub trait IngestWalStore: Send + Sync {
 
     /// 获取待处理事件数量。
     async fn pending_count(&self) -> Result<usize, StorageError>;
-}
-
-// ============================================================================
-// Redis 实现
-// ============================================================================
-
-const WAL_KEY: &str = "ems:ingest:wal";
-const WAL_PROCESSING_KEY: &str = "ems:ingest:wal:processing";
-
-/// Redis 采集 WAL 存储实现
-///
-/// 使用 Redis Hash 存储待处理事件：
-/// - 主 Hash: `ems:ingest:wal` - 存储所有待处理条目
-/// - 处理中 Hash: `ems:ingest:wal:processing` - 正在处理的条目（可选）
-pub struct RedisIngestWalStore {
-    client: redis::Client,
-}
-
-impl RedisIngestWalStore {
-    /// 创建 Redis WAL 存储实例。
-    pub fn new(client: redis::Client) -> Self {
-        Self { client }
-    }
-
-    /// 从 Redis URL 连接创建 WAL 存储。
-    pub fn connect(redis_url: &str) -> Result<Self, StorageError> {
-        let client =
-            redis::Client::open(redis_url).map_err(|err| StorageError::new(err.to_string()))?;
-        Ok(Self::new(client))
-    }
-}
-
-#[async_trait]
-impl IngestWalStore for RedisIngestWalStore {
-    async fn push_event(&self, event: &RawEvent) -> Result<String, StorageError> {
-        let mut connection = self
-            .client
-            .get_multiplexed_tokio_connection()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        // 生成唯一 WAL ID
-        let wal_id = uuid::Uuid::new_v4().to_string();
-
-        // 序列化事件
-        let entry = WalEntry {
-            wal_id: wal_id.clone(),
-            event: event.clone(),
-        };
-        let data =
-            serde_json::to_string(&entry).map_err(|err| StorageError::new(err.to_string()))?;
-
-        // 写入 Redis Hash
-        connection
-            .hset::<_, _, _, ()>(WAL_KEY, &wal_id, data)
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        Ok(wal_id)
-    }
-
-    async fn ack_event(&self, wal_id: &str) -> Result<bool, StorageError> {
-        let mut connection = self
-            .client
-            .get_multiplexed_tokio_connection()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        // 从 WAL 中删除
-        let removed: i64 = connection
-            .hdel(WAL_KEY, wal_id)
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        // 同时从处理中 Hash 删除（如果存在）
-        let _: i64 = connection
-            .hdel(WAL_PROCESSING_KEY, wal_id)
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        Ok(removed > 0)
-    }
-
-    async fn list_pending(&self) -> Result<Vec<WalEntry>, StorageError> {
-        let mut connection = self
-            .client
-            .get_multiplexed_tokio_connection()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        // 获取所有 WAL 条目
-        let entries: std::collections::HashMap<String, String> = connection
-            .hgetall(WAL_KEY)
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        let mut result = Vec::with_capacity(entries.len());
-        for (_wal_id, data) in entries {
-            match serde_json::from_str::<WalEntry>(&data) {
-                Ok(entry) => result.push(entry),
-                Err(err) => {
-                    tracing::warn!(error = %err, "failed to parse WAL entry, skipping");
-                }
-            }
-        }
-
-        Ok(result)
-    }
-
-    async fn pending_count(&self) -> Result<usize, StorageError> {
-        let mut connection = self
-            .client
-            .get_multiplexed_tokio_connection()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        let count: usize = connection
-            .hlen(WAL_KEY)
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        Ok(count)
-    }
 }
 
 // ============================================================================

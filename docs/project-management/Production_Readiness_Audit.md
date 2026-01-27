@@ -11,13 +11,13 @@
 ### 1. 启动依赖项导致的崩溃风险 (Panic Risk)
 *   **文件路径**：[`crates/capability/ingest/src/lib.rs:266`](file:///home/zw/projects/ems/crates/capability/ingest/src/lib.rs#L266)
 *   **问题描述**：在加载系统原生根证书（CA Certs）时使用了 `.expect("could not load platform certs")`。
-*   **风险评估**：在精简版生产环境（如 Alpine/Distroless Docker 镜像）中，若缺失 `ca-certificates` 库，整个采集子系统将直接崩溃且无法启动。
+*   **风险评估**：在精简版生产环境（如专用的嵌入式 Linux 发行版）中，若缺失 `ca-certificates` 库，整个采集子系统将直接崩溃且无法启动。
 *   **修改建议**：将 `expect` 改为 `?` 错误传播，并在 `main` 启动阶段捕获，记录 `error!` 日志并尝试优雅退出。
 
 ### 2. 前端 API 代理配置不严谨
 *   **文件路径**：[`web/admin/vite.config.ts:21`](file:///home/zw/projects/ems/web/admin/vite.config.ts#L21)
 *   **问题描述**：`const apiBase = VITE_API_BASE || "http://127.0.0.1:8080"` 配置了硬编码的回退地址。
-*   **风险评估**：如果生产容器环境变量未正确注入，前端请求将默认指向 `localhost`，产生难以排查的连接错误。
+*   **风险评估**：如果生产环境环境变量未正确注入，前端请求将默认指向 `localhost`，产生难以排查的连接错误。
 *   **修改建议**：移除默认值，若 `VITE_API_BASE` 缺失应在构建阶段报错。
 
 ### 3. 未闭环的动态权限路由

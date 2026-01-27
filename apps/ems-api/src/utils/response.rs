@@ -174,6 +174,7 @@ pub fn point_mapping_to_dto(record: PointMappingRecord) -> PointMappingDto {
         point_id: record.point_id,
         source_type: record.source_type,
         address: record.address,
+        writable: record.writable,
         scale: record.scale,
         offset: record.offset,
         protocol_detail: record.protocol_detail,

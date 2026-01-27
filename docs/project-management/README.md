@@ -10,7 +10,6 @@
 - **Node.js**: 20.19+ 或 22.13+
 - **pnpm**: 9+
 - **PostgreSQL**: 16+ (可选 TimescaleDB 扩展)
-- **Redis**: 7+
 - **Mosquitto**: 2+ (MQTT Broker，可选)
 
 ### 一键启动（开发环境）
@@ -73,9 +72,9 @@ curl -sS http://127.0.0.1:8080/readyz
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │                    存储层 (Storage Layer)                   │  │
 │  ├──────────────────────────────────────────────────────────────┤  │
-│  │  PostgreSQL+Timescale   │  Redis      │  MQTT Broker      │  │
-│  │  - 元数据              │  - 实时数据 │  - 数据采集       │  │
-│  │  - 时序数据            │  - 在线状态 │  - 控制指令       │  │
+│  │  PostgreSQL+Timescale   │  内存存储    │  MQTT Broker      │  │
+│  │  - 元数据              │             │  - 数据采集       │  │
+│  │  - 时序数据            │             │  - 控制指令       │  │
 │  │  - 控制与审计         │             │  - 回执监听       │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                     │
@@ -105,13 +104,13 @@ ems/
 ├── crates/capability/    # 能力模块
 │   ├── auth/             # JWT 认证与 RBAC
 │   ├── config/           # 配置管理
-│   ├── storage/          # 存储抽象（PostgreSQL + Redis）
+│   ├── storage/          # 存储抽象（PostgreSQL + InMemory）
 │   ├── ingest/           # 数据接入（MQTT）
 │   ├── normalize/        # 数据标准化
 │   ├── pipeline/         # 数据流水线
 │   ├── control/          # 设备控制
 │   ├── protocol/         # 协议支持（Modbus TCP）
-│   └── telemetry/       # 可观测性（日志、指标）
+│   ├── telemetry/       # 可观测性（日志、指标）
 ├── migrations/           # 数据库迁移脚本
 │   ├── 001_init.sql
 │   ├── 002_seed.sql
@@ -159,13 +158,6 @@ ems/
 | 变量名 | 默认值 | 说明 |
 |--------|---------|------|
 | `EMS_HTTP_ADDR` | `127.0.0.1:8080` | HTTP 监听地址 |
-
-#### Redis 配置
-| 变量名 | 默认值 | 说明 |
-|--------|---------|------|
-| `EMS_REDIS_URL` | `redis://default:admin123@localhost:6379` | Redis 连接字符串 |
-| `EMS_REDIS_LAST_VALUE_TTL_SECONDS` | 无（不设置 TTL） | 实时数据缓存过期秒数 |
-| `EMS_REDIS_ONLINE_TTL_SECONDS` | `60` | 在线状态缓存过期秒数 |
 
 #### MQTT 配置
 | 变量名 | 默认值 | 说明 |
@@ -311,7 +303,7 @@ ems/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/projects/:project_id/realtime` | 查询实时点位值（缓存自 Redis） |
+| GET | `/projects/:project_id/realtime` | 查询实时点位值 |
 
 **查询参数**：
 - `pointId`（可选）：指定点位 ID
@@ -479,7 +471,9 @@ mosquitto_pub -h 127.0.0.1 -p 1883 -u ems -P admin123 \
 
 # 或使用脚本
 EMS_COMMAND_ID="$COMMAND_ID" \
-EMS_MQTT_USERNAME=ems EMS_MQTT_PASSWORD=admin123 \
+EMS_MQTT_USERNAME=ems \
+EMS_MQTT_PASSWORD=admin123 \
+EMS_MQTT_TOPIC_PREFIX=ems \
 scripts/control-receipt-simulate.sh
 ```
 
@@ -618,12 +612,11 @@ scripts/db-init.sh
 ### 健康检查
 
 ```bash
-# 检查 PostgreSQL、Redis、MQTT 可用性
+# 检查 PostgreSQL、MQTT 可用性
 scripts/health-check.sh
 
 # 接受环境变量
 export EMS_DATABASE_URL="..."
-export EMS_REDIS_URL="redis://default:pass@host:6379"
 export EMS_MQTT_HOST="127.0.0.1"
 export EMS_MQTT_PORT="1883"
 export EMS_MQTT_USERNAME="ems"
@@ -684,7 +677,6 @@ scripts/mvp-acceptance.sh
 export EMS_HTTP_ADDR="127.0.0.1:18080"
 export EMS_DATABASE_URL="..."
 export EMS_JWT_SECRET="dev"
-export EMS_REDIS_URL="..."
 export EMS_MQTT_HOST="127.0.0.1"
 export EMS_MQTT_PORT="1883"
 export EMS_MQTT_USERNAME="ems"

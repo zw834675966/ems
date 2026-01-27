@@ -6,7 +6,8 @@
 #
 # ## Workspace 结构
 #
-# - `apps/ems-api`: HTTP API 服务器（唯一运行时二进制）
+# # - `apps/ems-api`: HTTP API 服务器
+# - `apps/ems-collector`: 采集引擎服务器（独立进程）
 # - `crates/core/`: 核心领域模型和 API 契约
 #   - `domain`: 领域模型（TenantContext、PointValue 等）
 #   - `api-contract`: DTO、ErrorCode、OpenAPI 规范
@@ -15,7 +16,7 @@
 #   - `ingest`: 数据接入能力（MQTT/HTTP 数据接收）
 #   - `normalize`: 数据标准化能力（单位转换、数据清洗）
 #   - `pipeline`: 数据流水线能力（接入 → 标准化 → 存储）
-#   - `storage`: 存储能力（PostgreSQL + Redis）
+#   - `storage`: 存储能力（PostgreSQL + InMemory）
 #   - `telemetry`: 可观测性能力（日志追踪、请求 ID）
 #   - `config`: 配置加载能力（环境变量读取）
 #
@@ -27,6 +28,7 @@
 [workspace]
 members = [
   "apps/ems-api",
+  "apps/ems-collector",
   "crates/core/domain",
   "crates/core/api-contract",
   "crates/capability/auth",
@@ -135,11 +137,6 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls"] }
 sqlx-cli = "0.8"
 
-# redis：Redis 客户端库
-# 特性：tokio-comp：Tokio 异步运行时兼容
-# 用途：实时数据缓存（last_value 存储）、SCAN 查询
-redis = { version = "0.26", features = ["tokio-comp"] }
-
 # rumqttc：MQTT 客户端库
 # 用途：MQTT 采集源接入（订阅与消息处理）
 rumqttc = { version = "0.24", features = ["use-rustls"] }
@@ -198,7 +195,7 @@ ems-ingest = { path = "crates/capability/ingest" }
 ems-normalize = { path = "crates/capability/normalize" }
 ems-control = { path = "crates/capability/control" }
 ems-pipeline = { path = "crates/capability/pipeline" }
-ems-storage = { path = "crates/capability/storage" }
+ems-storage = { path = "crates/capability/storage", default-features = false }
 ems-telemetry = { path = "crates/capability/telemetry" }
 ems-protocol = { path = "crates/capability/protocol" }
 

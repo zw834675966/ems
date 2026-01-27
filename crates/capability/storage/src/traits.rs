@@ -606,7 +606,7 @@ impl MeasurementsQueryOptions {
 
 /// 实时数据接口
 ///
-/// 用于维护 Redis last_value。
+/// 用于维护点位最新值缓存（内存实现）。
 #[async_trait]
 pub trait RealtimeStore: Send + Sync {
     /// 写入或更新点位 last_value
@@ -809,6 +809,16 @@ pub trait CollectionStrategyStore: Send + Sync {
         &self,
         ctx: &TenantContext,
         strategy_id: &str,
+        last_value: Option<String>,
+        last_error: Option<String>,
+    ) -> Result<(), StorageError>;
+
+    /// 按点位更新采集状态（最后采集时间、值、错误）
+    async fn update_collection_status_by_point_id(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        point_id: &str,
         last_value: Option<String>,
         last_error: Option<String>,
     ) -> Result<(), StorageError>;

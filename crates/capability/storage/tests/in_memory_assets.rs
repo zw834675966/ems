@@ -106,6 +106,7 @@ async fn point_mapping_in_memory_crud() {
         point_id: "pt-1".to_string(),
         source_type: "mqtt".to_string(),
         address: "topic/1".to_string(),
+        writable: false,
         scale: Some(1.0),
         offset: Some(0.0),
         protocol_detail: None,

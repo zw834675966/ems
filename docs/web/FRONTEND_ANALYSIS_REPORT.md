@@ -79,8 +79,8 @@
 | **安全性** | 4 | XSS 防护依赖 Vue 自动转义；Auth Token 存储在 Cookie/Storage (需注意 XSS 风险，建议生产环境强制 HTTPS)。 |
 
 ### 建议
-1.  **Docker 构建**: 项目根目录包含 `Dockerfile`，请确保构建流水线中包含前端的 Build 阶段 (Nginx 托管静态文件)。
-2.  **HTTPS**: 商用部署务必配置 Nginx 反向代理 HTTPS，并开启 HTTP2 支持以提升加载速度。
+1.  **原生部署**: 推荐由后端 `embedded-ui` 直接托管静态资源，实现单二进制分发。请确保构建流水线中包含前端的 Build 阶段。
+2.  **HTTPS**: 商用部署务必配置证书并开启 HTTPS 访问。后端直接监听 443 端口或配合云服务 Load Balancer 卸载 SSL。
 
 ---
 

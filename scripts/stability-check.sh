@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
 : "${EMS_HTTP_ADDR:=127.0.0.1:18081}"
@@ -6,7 +6,6 @@ set -euo pipefail
 : "${EMS_JWT_SECRET:=dev}"
 : "${EMS_JWT_ACCESS_TTL_SECONDS:=3600}"
 : "${EMS_JWT_REFRESH_TTL_SECONDS:=7200}"
-: "${EMS_REDIS_URL:?EMS_REDIS_URL is required}"
 : "${EMS_MQTT_HOST:=127.0.0.1}"
 : "${EMS_MQTT_PORT:=1883}"
 : "${EMS_MQTT_USERNAME:=ems}"
@@ -17,8 +16,8 @@ set -euo pipefail
 : "${EMS_POINT_PAYLOAD:=12.3}"
 : "${EMS_STABILITY_PUBLISH_COUNT:=200}"
 
-: "${EMS_SEED_ADMIN_PASSWORD:=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')}"
-: "${EMS_SEED_ADMIN2_PASSWORD:=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')}"
+: "${EMS_SEED_ADMIN_PASSWORD:=admin123}"
+: "${EMS_SEED_ADMIN2_PASSWORD:=admin123}"
 export EMS_SEED_ADMIN_PASSWORD
 export EMS_SEED_ADMIN2_PASSWORD
 
@@ -56,7 +55,6 @@ emu_pid=$!
 
 EMS_HTTP_ADDR="$EMS_HTTP_ADDR" \
 EMS_DATABASE_URL="$EMS_DATABASE_URL" \
-EMS_REDIS_URL="$EMS_REDIS_URL" \
 EMS_INGEST=on \
 EMS_CONTROL=on \
 EMS_JWT_SECRET="$EMS_JWT_SECRET" \
@@ -157,7 +155,7 @@ curl -fsS -X POST "$base_url/projects/$PROJECT_ID/point-mappings" \
   -d "$(python3 -c 'import json,sys; print(json.dumps({"pointId": sys.argv[1], "sourceType": "mqtt", "address": sys.argv[2]}))' "$POINT_ID" "$EMS_POINT_ADDRESS")" \
   >/dev/null
 
-# 1) 数据链路：批写 + flush（发布一批消息）
+# 1) 鏁版嵁閾捐矾锛氭壒鍐?+ flush锛堝彂甯冧竴鎵规秷鎭級
 for _ in $(seq 1 "$EMS_STABILITY_PUBLISH_COUNT"); do
   EMS_TENANT_ID="$EMS_TENANT_ID" \
   EMS_PROJECT_ID="$PROJECT_ID" \
@@ -211,8 +209,7 @@ curl -fsS "$base_url/projects/$PROJECT_ID/measurements?pointId=$POINT_ID&bucketM
   -H "$AUTH_HEADER" \
   | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data["success"] is True; items=data.get("data") or []; assert len(items) >= 1; print(f"measurements aggregate ok (len={len(items)})")'
 
-# 2) 异常输入：非法 payload 应被丢弃且服务保持可用
-EMS_TENANT_ID="$EMS_TENANT_ID" \
+# 2) 寮傚父杈撳叆锛氶潪娉?payload 搴旇涓㈠純涓旀湇鍔′繚鎸佸彲鐢?EMS_TENANT_ID="$EMS_TENANT_ID" \
 EMS_PROJECT_ID="$PROJECT_ID" \
 EMS_POINT_ADDRESS="$EMS_POINT_ADDRESS" \
 EMS_PAYLOAD="abc" \
@@ -226,8 +223,7 @@ scripts/mqtt-simulate.sh >/dev/null
 curl -fsS "$base_url/health" >/dev/null
 echo "invalid payload ok (service healthy)"
 
-# 3) 控制链路：使用“设备侧模拟器”自动回执
-COMMAND_ID=$(
+# 3) 鎺у埗閾捐矾锛氫娇鐢ㄢ€滆澶囦晶妯℃嫙鍣ㄢ€濊嚜鍔ㄥ洖鎵?COMMAND_ID=$(
   curl -fsS -X POST "$base_url/projects/$PROJECT_ID/commands" \
     -H "Content-Type: application/json" -H "$AUTH_HEADER" \
     -d '{"target":"demo-target","payload":{"action":"set","value":42}}' \
@@ -255,8 +251,7 @@ curl -fsS "$base_url/projects/$PROJECT_ID/commands?limit=50" \
   | python3 -c 'import json,sys; command_id=sys.argv[1]; data=json.load(sys.stdin); assert data["success"] is True; items=data.get("data") or []; assert any(x.get("commandId")==command_id and x.get("status") in ("success","accepted","failed","timeout") for x in items); print("command status ok")' \
   "$COMMAND_ID"
 
-# 4) 多租户隔离：tenant-2 的用户访问 tenant-1 项目应被拒绝（403）
-http_code=$(
+# 4) 澶氱鎴烽殧绂伙細tenant-2 鐨勭敤鎴疯闂?tenant-1 椤圭洰搴旇鎷掔粷锛?03锛?http_code=$(
   curl -sS -o /dev/null -w '%{http_code}' \
     "$base_url/projects/$PROJECT_ID/realtime?pointId=$POINT_ID" \
     -H "$AUTH_HEADER_2"

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
 : "${EMS_HTTP_ADDR:=127.0.0.1:18080}"
@@ -6,7 +6,6 @@ set -euo pipefail
 : "${EMS_JWT_SECRET:=dev}"
 : "${EMS_JWT_ACCESS_TTL_SECONDS:=3600}"
 : "${EMS_JWT_REFRESH_TTL_SECONDS:=7200}"
-: "${EMS_REDIS_URL:?EMS_REDIS_URL is required}"
 : "${EMS_MQTT_HOST:=127.0.0.1}"
 : "${EMS_MQTT_PORT:=1883}"
 : "${EMS_MQTT_USERNAME:=ems}"
@@ -16,7 +15,7 @@ set -euo pipefail
 : "${EMS_POINT_ADDRESS:=demo/topic}"
 : "${EMS_POINT_PAYLOAD:=12.3}"
 
-: "${EMS_SEED_ADMIN_PASSWORD:=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')}"
+: "${EMS_SEED_ADMIN_PASSWORD:=admin123}"
 export EMS_SEED_ADMIN_PASSWORD
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -46,7 +45,6 @@ cargo build -p ems-api >/dev/null
 log_file="${TMPDIR:-/tmp}/ems-api-${port}.log"
 EMS_HTTP_ADDR="$EMS_HTTP_ADDR" \
 EMS_DATABASE_URL="$EMS_DATABASE_URL" \
-EMS_REDIS_URL="$EMS_REDIS_URL" \
 EMS_INGEST=on \
 EMS_CONTROL=on \
 EMS_JWT_SECRET="$EMS_JWT_SECRET" \

@@ -7,7 +7,6 @@
 
 use crate::error::StorageError;
 use async_trait::async_trait;
-use redis::AsyncCommands;
 
 /// Token 黑名单存储接口
 ///
@@ -28,92 +27,6 @@ pub trait TokenBlacklistStore: Send + Sync {
 
     /// 批量检查多个 JTI 是否在黑名单中
     async fn are_blacklisted(&self, jtis: &[String]) -> Result<Vec<bool>, StorageError>;
-}
-
-// ============================================================================
-// Redis 实现
-// ============================================================================
-
-const BLACKLIST_KEY_PREFIX: &str = "ems:token:blacklist:";
-
-/// Redis Token 黑名单存储实现
-pub struct RedisTokenBlacklistStore {
-    client: redis::Client,
-}
-
-impl RedisTokenBlacklistStore {
-    /// 创建 Redis 黑名单存储实例
-    pub fn new(client: redis::Client) -> Self {
-        Self { client }
-    }
-
-    /// 从 Redis URL 连接创建黑名单存储
-    pub fn connect(redis_url: &str) -> Result<Self, StorageError> {
-        let client =
-            redis::Client::open(redis_url).map_err(|err| StorageError::new(err.to_string()))?;
-        Ok(Self::new(client))
-    }
-
-    fn key(jti: &str) -> String {
-        format!("{}{}", BLACKLIST_KEY_PREFIX, jti)
-    }
-}
-
-#[async_trait]
-impl TokenBlacklistStore for RedisTokenBlacklistStore {
-    async fn add_to_blacklist(&self, jti: &str, ttl_seconds: u64) -> Result<(), StorageError> {
-        let mut connection = self
-            .client
-            .get_multiplexed_tokio_connection()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        let key = Self::key(jti);
-        connection
-            .set_ex::<_, _, ()>(key, "1", ttl_seconds)
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        Ok(())
-    }
-
-    async fn is_blacklisted(&self, jti: &str) -> Result<bool, StorageError> {
-        let mut connection = self
-            .client
-            .get_multiplexed_tokio_connection()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        let key = Self::key(jti);
-        let exists: bool = connection
-            .exists(key)
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        Ok(exists)
-    }
-
-    async fn are_blacklisted(&self, jtis: &[String]) -> Result<Vec<bool>, StorageError> {
-        if jtis.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let mut connection = self
-            .client
-            .get_multiplexed_tokio_connection()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        let keys: Vec<String> = jtis.iter().map(|jti| Self::key(jti)).collect();
-
-        // 使用 MGET，返回 Some/None 来判断是否存在
-        let values: Vec<Option<String>> = connection
-            .mget(&keys)
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-
-        Ok(values.into_iter().map(|v| v.is_some()).collect())
-    }
 }
 
 // ============================================================================

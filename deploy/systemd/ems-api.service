@@ -1,0 +1,43 @@
+[Unit]
+Description=EMS (Energy Management System) API Service
+Documentation=https://github.com/your-org/ems/blob/main/docs/deploy/README.md
+After=network.target postgresql.service mosquitto.service
+Wants=postgresql.service mosquitto.service
+
+[Service]
+Type=notify
+# 使用 cargo build --release 后的二进制路径
+ExecStart=/opt/ems/bin/ems-api
+WorkingDirectory=/opt/ems
+EnvironmentFile=/opt/ems/.env
+# 日志输出配置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ems-api
+
+# 安全加固（可选但推荐）
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/ems/data /var/log/ems
+
+# 重启策略
+Restart=always
+RestartSec=5
+
+# 看门狗配置（如果硬件支持）
+WatchdogSec=30
+Watchdog=/dev/watchdog
+
+# 资源限制
+MemoryMax=512M
+MemoryHigh=400M
+CPUQuota=80%
+
+# 环境变量验证（启动前检查关键配置）
+ExecStartPre=/bin/bash -c 'test -n "$EMS_DATABASE_URL" || exit 1'
+ExecStartPre=/bin/bash -c 'test -n "$EMS_JWT_SECRET" || exit 1'
+
+[Install]
+WantedBy=multi-user.target

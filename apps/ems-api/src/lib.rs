@@ -1,6 +1,5 @@
 mod app_state;
 mod handlers;
-mod ingest;
 mod middleware;
 mod routes;
 mod utils;

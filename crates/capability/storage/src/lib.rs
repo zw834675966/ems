@@ -133,7 +133,6 @@
 //!
 //! ## 未来扩展
 //!
-//! - **Redis 集成**：添加 Redis 存储实现用于实时数据缓存
 //! - **TimescaleDB**：添加时序数据存储支持
 //! - **读写分离**：支持主从数据库配置
 //! - **连接池调优**：支持动态调整连接池大小
@@ -148,7 +147,6 @@ pub mod ingest_wal;
 pub mod models;
 pub mod online;
 pub mod postgres;
-pub mod redis;
 pub mod token_blacklist;
 pub mod traits;
 pub mod validation;
@@ -157,14 +155,10 @@ pub mod validation;
 pub use audit_builder::AuditBuilder;
 pub use connection::*;
 pub use error::*;
-pub use ingest_wal::{InMemoryIngestWalStore, IngestWalStore, RedisIngestWalStore, WalEntry};
+pub use ingest_wal::{InMemoryIngestWalStore, IngestWalStore, WalEntry};
 pub use models::*;
 pub use online::*;
-pub use redis::RedisOnlineStore;
-pub use redis::RedisRealtimeStore;
-pub use token_blacklist::{
-    InMemoryTokenBlacklistStore, RedisTokenBlacklistStore, TokenBlacklistStore,
-};
+pub use token_blacklist::{InMemoryTokenBlacklistStore, TokenBlacklistStore};
 pub use traits::*;
 pub use validation::*;
 

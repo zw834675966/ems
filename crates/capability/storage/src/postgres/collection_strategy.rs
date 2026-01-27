@@ -356,6 +356,33 @@ impl CollectionStrategyStore for PgCollectionStrategyStore {
 
         Ok(())
     }
+
+    async fn update_collection_status_by_point_id(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        point_id: &str,
+        last_value: Option<String>,
+        last_error: Option<String>,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            "UPDATE collection_strategies \
+             SET last_collected_at = NOW(), \
+             last_value = $4, \
+             last_error = $5, \
+             updated_at = NOW() \
+             WHERE tenant_id = $1 AND project_id = $2 AND point_id = $3",
+        )
+        .bind(&ctx.tenant_id)
+        .bind(project_id)
+        .bind(point_id)
+        .bind(last_value)
+        .bind(last_error)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

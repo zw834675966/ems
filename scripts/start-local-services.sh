@@ -3,7 +3,6 @@ set -euo pipefail
 
 SERVICES=(
   "postgresql"
-  "redis-server"
   "mosquitto"
 )
 
@@ -33,13 +32,9 @@ start_with_userd() {
   for svc in "${SERVICES[@]}"; do
     if pg_isready -q -d "postgresql://localhost" >/dev/null 2>&1 && [[ "$svc" == "postgresql" ]]; then
       echo "PostgreSQL appears healthy"
-    elif [[ "$svc" == "redis-server" ]]; then
-      if redis-cli ping >/dev/null 2>&1; then
-        echo "Redis appears healthy"
-        continue
-      fi
-      echo "starting redis-server directly"
-      sudo service redis-server start
+    elif [[ "$svc" == "mosquitto" ]]; then
+      echo "starting mosquitto directly"
+      sudo service mosquitto start
     fi
   done
 }

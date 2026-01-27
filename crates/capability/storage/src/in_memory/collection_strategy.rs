@@ -304,4 +304,29 @@ impl CollectionStrategyStore for InMemoryCollectionStrategyStore {
         }
         Ok(())
     }
+
+    async fn update_collection_status_by_point_id(
+        &self,
+        ctx: &TenantContext,
+        project_id: &str,
+        point_id: &str,
+        last_value: Option<String>,
+        last_error: Option<String>,
+    ) -> Result<(), StorageError> {
+        let mut strategies = self
+            .strategies
+            .write()
+            .map_err(|_| StorageError::new("lock failed"))?;
+
+        for record in strategies.values_mut() {
+            if record.tenant_id == ctx.tenant_id
+                && record.project_id == project_id
+                && record.point_id == point_id
+            {
+                record.last_value = last_value.clone();
+                record.last_error = last_error.clone();
+            }
+        }
+        Ok(())
+    }
 }

@@ -1,7 +1,12 @@
 .env
 .env.*
 target/
+target-wsl/
 node_modules/
+*.log
+__pycache__/
+*.pyc
+*.pyo
+*.bak
 mcp-shell.log
 .data/
-

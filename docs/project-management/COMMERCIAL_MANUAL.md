@@ -9,7 +9,7 @@
 ## 1. 系统简介
 EMS (Energy Management System) 是一个基于云原生架构的高性能能源管理系统。
 - **后端核心**: Rust + Axum (极速、安全)
-- **数据存储**: TimescaleDB (时序数据) + Redis (实时缓存)
+- **数据存储**: TimescaleDB (时序数据)
 - **前端界面**: Vue 3 + Element Plus (现代交互体验)
 - **通信协议**: MQTT (广泛的设备兼容性)
 
@@ -24,7 +24,6 @@ EMS (Energy Management System) 是一个基于云原生架构的高性能能源�
 - **操作系统**: Linux (Ubuntu 22.04 LTS / CentOS 7+ 推荐)
 - **运行环境**: 原生 Linux 环境 (Systemd 进程管理)
 - **数据库**: PostgreSQL 16+（建议安装 TimeScaleDB 插件；可通过 `EMS_REQUIRE_TIMESCALE=on` 强制要求）
-- **缓存**: Redis 7.0+
 - **消息队列**: MQTT Broker (如 EMQX 或 Mosquitto)
 
 ---
@@ -46,7 +45,7 @@ EMS (Energy Management System) 是一个基于云原生架构的高性能能源�
 # 参考 deploy 目录下的 systemd 单元文件模板
 
 # 2. 启动依赖服务
-sudo systemctl enable --now postgresql redis-server mosquitto
+sudo systemctl enable --now postgresql mosquitto
 
 # 3. 启动应用服务
 sudo systemctl enable --now ems-api
@@ -79,8 +78,6 @@ sudo systemctl status ems-api
 | 变量名 | 说明 | 默认值 |
 | :--- | :--- | :--- |
 | `EMS_DATABASE_URL` | PostgreSQL 连接串 | `postgresql://<user>:<password>@postgres:5432/ems` |
-| `EMS_REDIS_URL` | Redis 连接串 | `redis://<user>:<password>@redis:6379`（或 `redis://redis:6379`） |
-| `EMS_REDIS_ONLINE_TTL_SECONDS` | 设备在线状态缓存时长 | `60` |
 | `EMS_REQUIRE_TIMESCALE` | 是否强依赖 timescaledb（生产建议开启） | `off` |
 
 ### 4.3 MQTT 消息总线
@@ -103,11 +100,11 @@ sudo systemctl status ems-api
 
 ## 5. 运维操作指南 (Operations)
 
-### 5.0 生产拓扑建议（TLS 与反向代理）
-- 建议由 Nginx/Envoy/Ingress 终止 TLS，后端 `ems-api` 仅提供 HTTP（内网）。
-- 反向代理需透传转发头：`X-Forwarded-For`、`X-Forwarded-Proto`、`X-Forwarded-Host`。
-- 建议加安全响应头（示例）：`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy: no-referrer`。
-- `GET /metrics` 需要鉴权（权限 `SYSTEM.METRICS.READ`），仍建议仅内网开放或网段限制，避免对公网暴露运行指标。
+### 5.0 生产拓扑建议
+- 建议后端 `ems-api` 使用 `embedded-ui` 直接托管静态资源，实现单一二进制分发。
+- 如需 TLS，建议配合云服务负载均衡器（Load Balancer）进行 SSL 卸载。
+- 后端应用已内置安全响应头：`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy: no-referrer`。
+- `GET /metrics` 需要鉴权（权限 `SYSTEM.METRICS.READ`），仍建议仅内网开放或通过 Systemd `IPAddressDeny` 限制访问。
 
 ### 5.1 数据备份
 建议每日备份 PostgreSQL 数据库。

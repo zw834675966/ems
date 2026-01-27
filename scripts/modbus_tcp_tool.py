@@ -73,8 +73,7 @@ def modbus_request(
         if rx_uid != unit_id:
             raise ValueError(f"unexpected unit id: {rx_uid}")
         if rx_tid != transaction_id:
-            # Some devices may not echo tid; warn but continue.
-            pass
+            print(f"WARN: TID mismatch! sent={transaction_id}, recv={rx_tid}")
         pdu_len = rx_len - 1
         rx_pdu = recv_exact(sock, pdu_len)
         return rx_uid, rx_pdu

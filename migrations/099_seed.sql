@@ -1,0 +1,8 @@
+-- Legacy migration kept for compatibility.
+--
+-- Some environments have already applied migration `99`, and SQLx requires the
+-- file to remain present to satisfy migration resolution.
+--
+-- The actual seed data now lives in:
+-- - migrations/002_seed.sql
+-- - migrations/018_seed_extras.sql

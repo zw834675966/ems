@@ -14,7 +14,7 @@
   - `run_local_services_script()`：尝试运行 `scripts/start-local-services.sh`（本地依赖服务）。
   - `connect_pool(&config.database_url)`：创建 PG 连接池。
   - `AuthService::new(...)`：认证服务装配。
-  - Storage 装配：`PgProjectStore/PgGatewayStore/...`、`RedisRealtimeStore/RedisOnlineStore`。
+  - Storage 装配：`PgProjectStore/PgGatewayStore/...`、`InMemoryRealtimeStore/InMemoryOnlineStore`。
   - Control 装配：`MqttDispatcher::connect` / `NoopDispatcher`；`CommandService::new_with_config`。
   - Ingest 装配：`ingest::spawn_ingest(...)`；含 MQTT、Modbus/TCP 多网关管理。
   - Router：`routes::create_api_router()`；挂载在 `/` 与 `/api`；`request_context` 中间件注入 `request_id/trace_id`。
@@ -69,7 +69,7 @@
 - 端点：`GET/POST/PUT/DELETE /projects/:id/gateways`, `POST /projects/:id/gateways/:gid/test`
 - 权限：`ASSET_GATEWAY_READ/WRITE`。
 - 关键逻辑：
-  - 列表/详情：结合 Redis `OnlineStore` 补充 `online/last_seen_at/last_error`。
+  - 列表/详情：结合内存 `OnlineStore` 补充 `online/last_seen_at/last_error`。
   - `validate_protocol_config`: 校验协议 JSON 字段（modbus/tcp）。
   - `test_gateway`: modbus 连接测试，更新在线状态与错误信息。
 
@@ -79,7 +79,7 @@
 - 关键逻辑：
   - 创建设备前校验网关存在。
   - `validate_address_config`: 按协议解析 `addressConfig`（modbus/tcp）。
-  - 列表/详情：从 Redis OnlineStore 补充在线状态。
+  - 列表/详情：从内存 OnlineStore 补充在线状态。
 
 ### apps/ems-api/src/handlers/points.rs
 - 端点：`GET/POST/PUT/DELETE /projects/:id/points`
@@ -97,7 +97,7 @@
 ### apps/ems-api/src/handlers/realtime.rs
 - 端点：`GET /projects/:id/realtime`
 - 权限：`DATA_REALTIME_READ`。
-- 逻辑：若传 `point_id` 则查单点，否则查询项目全部实时值（Redis）。
+- 逻辑：若传 `point_id` 则查单点，否则查询项目全部实时值（内存）。
 
 ### apps/ems-api/src/handlers/measurements.rs
 - 端点：`GET /projects/:id/measurements`
@@ -138,7 +138,7 @@
   - `PipelineHandler::handle`：WAL -> normalize -> pipeline -> online update。
   - `spawn_ingest`：初始化 Normalizer、Pipeline、MQTT Source、Modbus/TCP 管理器。
   - `ModbusProtocolManager/TcpServerProtocolManager`：周期扫描网关并创建/销毁采集任务。
-  - `touch_online_from_point`：通过点位反查设备/网关并更新 Redis 在线状态。
+  - `touch_online_from_point`：通过点位反查设备/网关并更新内存在线状态。
 
 ### crates/core/api-contract/src/lib.rs
 - 作用：后端 API DTO 统一定义（`ApiResponse`, `LoginRequest`, `ProjectDto`, `CommandDto` 等）。
@@ -152,7 +152,7 @@
 - 关键方法：`AuthService::login/refresh/verify_access_token`。
 
 ### crates/capability/config/src/lib.rs
-- 作用：从环境变量加载运行配置（数据库、Redis、MQTT、JWT、HTTP 地址等）。
+- 作用：从环境变量加载运行配置（数据库、MQTT、JWT、HTTP 地址等）。
 - 注意：`EMS_HTTP_ADDR` 默认 `127.0.0.1:8080`，与 main.rs 注释不同。
 
 ### crates/capability/control/src/lib.rs
@@ -182,7 +182,7 @@
 - 作用：所有 Store trait 定义（含 project_scope 校验）。
 
 ### crates/capability/storage/src/error.rs
-- 作用：`StorageError` 统一封装（SQLx/Redis）。
+- 作用：`StorageError` 统一封装（SQLx）。
 
 ### crates/capability/storage/src/postgres/*.rs
 - 作用：各资源的 SQLx 实现，直接映射表结构与 CRUD 语义。
@@ -191,7 +191,7 @@
 ### crates/capability/storage/src/in_memory/*.rs
 - 作用：测试/演示用内存存储实现（`RwLock<HashMap>`）。
 
-### crates/capability/storage/src/redis.rs / online.rs / ingest_wal.rs
+### crates/capability/storage/src/online.rs / ingest_wal.rs / token_blacklist.rs
 - 作用：实时值、在线状态、WAL 存储。
 
 ### crates/capability/telemetry/src/lib.rs

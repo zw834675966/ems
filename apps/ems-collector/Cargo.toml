@@ -1,0 +1,24 @@
+[package]
+name = "ems-collector"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92.0"
+publish = false
+
+[dependencies]
+ems-config = { workspace = true }
+ems-ingest = { workspace = true }
+ems-protocol = { workspace = true }
+ems-normalize = { workspace = true }
+ems-pipeline = { workspace = true }
+ems-storage = { workspace = true, default-features = false }
+ems-telemetry = { workspace = true }
+domain = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+dotenvy = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+async-trait = { workspace = true }

@@ -5,7 +5,6 @@
 ```
 deploy/
 ├── ems-api.service          # Systemd 服务单元模板
-├── nginx.conf               # Nginx 反向代理配置
 ├── README.md                # 本文档
 ├── ssl/                     # SSL 证书目录（需创建）
 │   ├── certificate.crt
@@ -101,7 +100,7 @@ systemctl status ems-api
 journalctl -u ems-api -f
 
 # 测试 API
-curl https://your-domain.com/api/health
+curl http://your-domain.com/api/health
 ```
 
 ## 资源配置
@@ -110,42 +109,20 @@ curl https://your-domain.com/api/health
 |------|----------|----------|------|
 | PostgreSQL | 2GB | 2核 | 可根据数据量调整 |
 | Redis | 512MB | 1核 | maxmemory 设为 450MB |
-| EMS API | 1GB | 2核 | 根据请求量调整 |
-| EMS Web | Nginx | Nginx | 静态资源服务 |
-| Nginx | 128MB | 0.5核 | 反向代理 |
+| EMS API | 1GB | 2核 | 根据请求量调整 (集成静态资源服务) |
 | MQTT | 256MB | 0.5核 | 消息队列 |
 
 ## 安全配置
 
-### Nginx 安全 Headers
-
-已配置的安全 Headers：
-
-- **HSTS**: 强制 HTTPS，有效期 1 年
-- **X-Frame-Options**: SAMEORIGIN，防止点击劫持
-- **X-XSS-Protection**: 启用 XSS 过滤
-- **X-Content-Type-Options**: nosniff，禁止 MIME 嗅探
-- **Referrer-Policy**: strict-origin-when-cross-origin
-- **Content-Security-Policy**: 限制资源加载来源
-
 ### /metrics 访问限制
 
-`/metrics` 端点仅允许内网 IP 访问：
+`/metrics` 端点建议仅内网 IP 访问：
 - 10.0.0.0/8
 - 172.16.0.0/12
 - 192.168.0.0/16
 - 127.0.0.1
 
-如需从外网访问指标，可配置 Token 验证：
-
-```nginx
-location /api/metrics {
-    if ($http_x_metrics_token != "your-secret-token") {
-        return 403;
-    }
-    # ...
-}
-```
+生产环境下应配置网段限制或在 Systemd 单元中使用 IP 访问控制。
 
 ## TimescaleDB 数据治理
 
@@ -277,5 +254,5 @@ sudo cp target/release/ems-api /usr/local/bin/
 sudo systemctl start ems-api
 
 # 6. 验证
-curl https://your-domain.com/api/health
+curl http://your-domain.com/api/health
 ```

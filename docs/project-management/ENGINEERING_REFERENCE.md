@@ -147,7 +147,7 @@ impl Source for MqttSource {
 **功能:**
 - `Pipeline`: 数据处理流水线 (批量、去重、重试)
 - `PointValueWriter` Trait: 写入接口
-- `StoragePointValueWriter`: 写入 Measurement + LastValue
+- `StoragePointValueWriter`: 写入 Measurement + LastValue (内存)
 
 **特性:**
 - 批量写入 (`batch_size`)
@@ -171,13 +171,12 @@ issued → accepted → success/failed/timeout
 
 ##### `storage` (crates/capability/storage)
 
-**文件:** `lib.rs`, `traits.rs`, `models.rs`, `postgres/`, `in_memory/`, `redis.rs`
+**文件:** `lib.rs`, `traits.rs`, `models.rs`, `postgres/`, `in_memory/`
 
 **功能:**
 - 定义所有存储 Trait: `UserStore`, `ProjectStore`, `DeviceStore`, `PointStore`, `PointMappingStore`, `MeasurementStore`, `RealtimeStore`, `CommandStore`, `AuditLogStore` 等
 - PostgreSQL 实现: `PgUserStore`, `PgProjectStore`, ...
-- InMemory 实现: 用于测试
-- Redis 实现: `RedisRealtimeStore`, `RedisOnlineStore`
+- InMemory 实现: 用于测试和实时数据缓存
 
 **设计原则:**
 - 所有方法显式接收 `TenantContext`
@@ -382,7 +381,6 @@ ems/
 │       │       ├── error.rs       # StorageError
 │       │       ├── connection.rs  # PgPool
 │       │       ├── validation.rs  # 租户验证
-│       │       ├── redis.rs       # Redis 实现
 │       │       ├── online.rs      # OnlineStore Trait
 │       │       ├── postgres/      # Pg 实现
 │       │       └── in_memory/     # 内存实现
@@ -462,7 +460,7 @@ sequenceDiagram
     participant Normalize as ems-normalize
     participant Pipeline as ems-pipeline
     participant Pg as PostgreSQL
-    participant Redis as Redis
+    participant Memory as In-Memory Store
 
     Device->>MQTT: PUBLISH ems/data/tenant/project/address
     MQTT->>Ingest: 消息推送
@@ -478,7 +476,7 @@ sequenceDiagram
     Pipeline->>Pipeline: 加入 buffer
     alt buffer 满
         Pipeline->>Pg: write_measurements (批量 INSERT)
-        Pipeline->>Redis: upsert_last_value (SET)
+        Pipeline->>Memory: upsert_last_value (原子更新)
     end
     Pipeline-->>Ingest: WriteResult
 ```

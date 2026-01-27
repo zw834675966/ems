@@ -207,3 +207,30 @@
 
 ---
 
+## 10. 快速联调脚本（本仓库自带）
+
+仓库自带两个无第三方依赖的 Modbus/TCP 联调脚本，适合在现场快速验证网关与设备是否可稳定读写：
+
+### 10.1 基础读写：`scripts/modbus_tcp_tool.py`
+
+* 读保持寄存器（手册 40001 → address=0）：
+
+`python3 scripts/modbus_tcp_tool.py --host <ip> --port <port> --unit-id 1 read --function 3 --address 0 --quantity 1`
+
+* 写保持寄存器（把 40001 写成 1）：
+
+`python3 scripts/modbus_tcp_tool.py --host <ip> --port <port> --unit-id 1 write --function 6 --address 0 --value 1`
+
+### 10.2 继电器稳定性循环测试：`scripts/modbus_relay_loop_test.py`
+
+用途：持续把输出置 True，并同时校验输出读回值（可选再校验一个“反馈输入”地址），任何一次失败立即退出并返回非 0。
+
+* 仅校验输出（默认 out-ref=40001）：
+
+`python3 scripts/modbus_relay_loop_test.py --host <ip> --port <port> --unit-id 1 --required-successes 100 --verbose`
+
+* 同时校验反馈输入（示例：把反馈当作 00001；如你的设备反馈是 10001/30001/40002 等，改成对应 ref 即可）：
+
+`python3 scripts/modbus_relay_loop_test.py --host <ip> --port <port> --unit-id 1 --out-ref 40001 --fb-ref 00001 --required-successes 100 --verbose`
+
+> `--required-successes 0` 表示无限循环直到失败或 Ctrl+C。

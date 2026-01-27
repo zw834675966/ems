@@ -36,7 +36,7 @@ impl PointMappingStore for PgPointMappingStore {
         project_id: &str,
     ) -> Result<Vec<PointMappingRecord>, StorageError> {
         let rows = sqlx::query(
-            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail::text \
+            "select source_id, tenant_id, project_id, point_id, source_type, address, writable, scale, offset_value, protocol_detail::text \
              from point_sources where tenant_id = $1 and project_id = $2",
         )
         .bind(&ctx.tenant_id)
@@ -52,6 +52,7 @@ impl PointMappingStore for PgPointMappingStore {
                 point_id: row.try_get("point_id")?,
                 source_type: row.try_get("source_type")?,
                 address: row.try_get("address")?,
+                writable: row.try_get("writable")?,
                 scale: row.try_get("scale")?,
                 offset: row.try_get("offset_value")?,
                 protocol_detail: row.try_get("protocol_detail")?,
@@ -68,7 +69,7 @@ impl PointMappingStore for PgPointMappingStore {
     ) -> Result<Option<PointMappingRecord>, StorageError> {
         ensure_project_scope(ctx, project_id)?;
         let row = sqlx::query(
-            "select source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail::text \
+            "select source_id, tenant_id, project_id, point_id, source_type, address, writable, scale, offset_value, protocol_detail::text \
              from point_sources where tenant_id = $1 and project_id = $2 and source_id = $3",
         )
         .bind(&ctx.tenant_id)
@@ -86,6 +87,7 @@ impl PointMappingStore for PgPointMappingStore {
             point_id: row.try_get("point_id")?,
             source_type: row.try_get("source_type")?,
             address: row.try_get("address")?,
+            writable: row.try_get("writable")?,
             scale: row.try_get("scale")?,
             offset: row.try_get("offset_value")?,
             protocol_detail: row.try_get("protocol_detail")?,
@@ -102,8 +104,8 @@ impl PointMappingStore for PgPointMappingStore {
             return Err(StorageError::new("tenant mismatch"));
         }
         sqlx::query(
-            "insert into point_sources (source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail) \
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)",
+            "insert into point_sources (source_id, tenant_id, project_id, point_id, source_type, address, writable, scale, offset_value, protocol_detail) \
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)",
         )
         .bind(&record.source_id)
         .bind(&record.tenant_id)
@@ -111,6 +113,7 @@ impl PointMappingStore for PgPointMappingStore {
         .bind(&record.point_id)
         .bind(&record.source_type)
         .bind(&record.address)
+        .bind(record.writable)
         .bind(record.scale)
         .bind(record.offset)
         .bind(&record.protocol_detail)
@@ -131,14 +134,16 @@ impl PointMappingStore for PgPointMappingStore {
             "update point_sources set \
              source_type = coalesce($1, source_type), \
              address = coalesce($2, address), \
-             scale = coalesce($3, scale), \
-             offset_value = coalesce($4, offset_value), \
-             protocol_detail = coalesce($5::jsonb, protocol_detail) \
-             where tenant_id = $6 and project_id = $7 and source_id = $8 \
-             returning source_id, tenant_id, project_id, point_id, source_type, address, scale, offset_value, protocol_detail::text",
+             writable = coalesce($3, writable), \
+             scale = coalesce($4, scale), \
+             offset_value = coalesce($5, offset_value), \
+             protocol_detail = coalesce($6::jsonb, protocol_detail) \
+             where tenant_id = $7 and project_id = $8 and source_id = $9 \
+             returning source_id, tenant_id, project_id, point_id, source_type, address, writable, scale, offset_value, protocol_detail::text",
         )
         .bind(update.source_type)
         .bind(update.address)
+        .bind(update.writable)
         .bind(update.scale)
         .bind(update.offset)
         .bind(update.protocol_detail)
@@ -157,6 +162,7 @@ impl PointMappingStore for PgPointMappingStore {
             point_id: row.try_get("point_id")?,
             source_type: row.try_get("source_type")?,
             address: row.try_get("address")?,
+            writable: row.try_get("writable")?,
             scale: row.try_get("scale")?,
             offset: row.try_get("offset_value")?,
             protocol_detail: row.try_get("protocol_detail")?,

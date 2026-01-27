@@ -109,6 +109,7 @@ pub async fn create_point_mapping(
         point_id,
         source_type,
         address,
+        writable: req.writable.unwrap_or(false),
         scale: req.scale,
         offset: req.offset,
         protocol_detail: req.protocol_detail,
@@ -189,12 +190,14 @@ pub async fn update_point_mapping(
     let update = ems_storage::PointMappingUpdate {
         source_type,
         address,
+        writable: req.writable,
         scale: req.scale,
         offset: req.offset,
         protocol_detail: protocol_detail.clone(),
     };
     if update.source_type.is_none()
         && update.address.is_none()
+        && update.writable.is_none()
         && update.scale.is_none()
         && update.offset.is_none()
         && protocol_detail.is_none()

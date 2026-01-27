@@ -73,12 +73,27 @@
 //!     └─ /projects/:project_id/collection-strategies/:strategy_id      - 删除策略（DELETE）
 //! ```
 
-use super::AppState;
 use super::handlers::*;
+use super::AppState;
 use axum::{
-    Router,
     routing::{delete, get, post, put},
+    Router,
 };
+
+/// 创建系统路由器（不带 /api 前缀）
+///
+/// 主要用于单文件分发（内嵌前端）模式下，将健康检查等端点保留在根路径，
+/// 避免与前端 SPA 路由冲突。
+#[cfg(feature = "embedded-ui")]
+#[allow(dead_code)]
+pub fn create_system_router() -> Router<AppState> {
+    Router::new()
+        .route("/health", get(health))
+        .route("/livez", get(livez))
+        .route("/readyz", get(readyz))
+        .route("/metrics", get(get_metrics))
+        .route("/metrics/prometheus", get(get_metrics_prometheus))
+}
 
 /// 创建 API 路由器
 ///
@@ -89,6 +104,7 @@ pub fn create_api_router() -> Router<AppState> {
         .route("/livez", get(livez))
         .route("/readyz", get(readyz))
         .route("/metrics", get(get_metrics))
+        .route("/metrics/prometheus", get(get_metrics_prometheus))
         .route("/login", post(login))
         .route("/refresh-token", post(refresh_token))
         .route("/get-async-routes", get(get_async_routes))

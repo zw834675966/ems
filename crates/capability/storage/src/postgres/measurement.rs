@@ -66,27 +66,41 @@ impl MeasurementStore for PgMeasurementStore {
         if values.is_empty() {
             return Ok(0);
         }
-        let mut tx = self.pool.begin().await?;
+
+        let mut tenant_ids = Vec::with_capacity(values.len());
+        let mut project_ids = Vec::with_capacity(values.len());
+        let mut point_ids = Vec::with_capacity(values.len());
+        let mut ts_mss = Vec::with_capacity(values.len());
+        let mut values_str = Vec::with_capacity(values.len());
+        let mut qualities = Vec::with_capacity(values.len());
+
         for value in values {
             ensure_project_scope(ctx, &value.project_id)?;
             if value.tenant_id != ctx.tenant_id {
                 return Err(StorageError::new("tenant mismatch"));
             }
-            let value_str = value_to_string(value);
-            sqlx::query(
-                "insert into measurement (tenant_id, project_id, point_id, ts, value, quality) \
-                 values ($1, $2, $3, to_timestamp($4 / 1000.0), $5, $6)",
-            )
-            .bind(&value.tenant_id)
-            .bind(&value.project_id)
-            .bind(&value.point_id)
-            .bind(value.ts_ms as f64)
-            .bind(value_str)
-            .bind(&value.quality)
-            .execute(&mut *tx)
-            .await?;
+            tenant_ids.push(value.tenant_id.clone());
+            project_ids.push(value.project_id.clone());
+            point_ids.push(value.point_id.clone());
+            ts_mss.push(value.ts_ms as f64);
+            values_str.push(value_to_string(value));
+            qualities.push(value.quality.clone());
         }
-        tx.commit().await?;
+
+        sqlx::query(
+            "insert into measurement (tenant_id, project_id, point_id, ts, value, quality) \
+             select u.tenant_id, u.project_id, u.point_id, to_timestamp(u.ts_ms / 1000.0), u.value, u.quality \
+             from unnest($1, $2, $3, $4, $5, $6) as u(tenant_id, project_id, point_id, ts_ms, value, quality)",
+        )
+        .bind(&tenant_ids)
+        .bind(&project_ids)
+        .bind(&point_ids)
+        .bind(&ts_mss)
+        .bind(&values_str)
+        .bind(&qualities)
+        .execute(&self.pool)
+        .await?;
+
         Ok(values.len())
     }
 

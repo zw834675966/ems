@@ -14,8 +14,6 @@ pub struct StorageError {
 pub enum StorageErrorKind {
     #[error(transparent)]
     Database(#[from] sqlx::Error),
-    #[error(transparent)]
-    Redis(#[from] redis::RedisError),
     #[error("{0}")]
     Other(String),
 }
@@ -33,7 +31,6 @@ impl StorageError {
                 e,
                 sqlx::Error::Io(_) | sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed
             ),
-            StorageErrorKind::Redis(e) => e.is_io_error() | e.is_connection_refusal(),
             _ => false,
         }
     }
@@ -55,14 +52,6 @@ impl From<sqlx::Error> for StorageError {
     fn from(err: sqlx::Error) -> Self {
         Self {
             kind: StorageErrorKind::Database(err),
-        }
-    }
-}
-
-impl From<redis::RedisError> for StorageError {
-    fn from(err: redis::RedisError) -> Self {
-        Self {
-            kind: StorageErrorKind::Redis(err),
         }
     }
 }

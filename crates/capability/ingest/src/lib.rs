@@ -80,6 +80,37 @@ impl MqttSource {
 #[async_trait]
 impl Source for MqttSource {
     async fn run(&self, _handler: Arc<dyn RawEventHandler>) -> Result<(), IngestError> {
+        // 商用场景下，MQTT 网络抖动/重连是常态。
+        // 这里使用“永不退出”的重连循环：断线后指数退避重连，避免采集线程永久停止。
+        let mut backoff_ms: u64 = 500;
+        let max_backoff_ms: u64 = 30_000;
+
+        loop {
+            match self.run_once(_handler.clone()).await {
+                Ok(()) => {
+                    // 正常情况下 run_once 不会返回 Ok（内部是 poll loop）。
+                    // 为兼容未来实现，返回 Ok 时直接退出。
+                    return Ok(());
+                }
+                Err(err) => {
+                    let jitter_ms = now_epoch_ms().rem_euclid(250) as u64;
+                    warn!(
+                        error = %err,
+                        backoff_ms = backoff_ms,
+                        jitter_ms = jitter_ms,
+                        "mqtt ingest loop stopped, reconnecting"
+                    );
+                    tokio::time::sleep(Duration::from_millis(backoff_ms.saturating_add(jitter_ms)))
+                        .await;
+                    backoff_ms = (backoff_ms.saturating_mul(2)).min(max_backoff_ms);
+                }
+            }
+        }
+    }
+}
+
+impl MqttSource {
+    async fn run_once(&self, handler: Arc<dyn RawEventHandler>) -> Result<(), IngestError> {
         let client_id = format!("ems-ingest-{}", now_epoch_ms());
         let mut options =
             rumqttc::MqttOptions::new(client_id, self.config.host.clone(), self.config.port);
@@ -136,7 +167,7 @@ impl Source for MqttSource {
                         payload: publish.payload.to_vec(),
                         received_at_ms: now_epoch_ms(),
                     };
-                    if let Err(err) = _handler.handle(event).await {
+                    if let Err(err) = handler.handle(event).await {
                         warn!("raw event handler failed: {}", err);
                     }
                 }

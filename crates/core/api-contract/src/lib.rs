@@ -340,6 +340,8 @@ pub struct CreatePointMappingRequest {
     pub point_id: String,
     pub source_type: String,
     pub address: String,
+    /// 是否可写（用于控制/下发命令等场景）。默认 false。
+    pub writable: Option<bool>,
     pub scale: Option<f64>,
     pub offset: Option<f64>,
     /// 协议细节配置（JSON 字符串）
@@ -352,6 +354,7 @@ pub struct CreatePointMappingRequest {
 pub struct UpdatePointMappingRequest {
     pub source_type: Option<String>,
     pub address: Option<String>,
+    pub writable: Option<bool>,
     pub scale: Option<f64>,
     pub offset: Option<f64>,
     pub protocol_detail: Option<String>,
@@ -366,6 +369,7 @@ pub struct PointMappingDto {
     pub point_id: String,
     pub source_type: String,
     pub address: String,
+    pub writable: bool,
     pub scale: Option<f64>,
     pub offset: Option<f64>,
     pub protocol_detail: Option<String>,

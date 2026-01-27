@@ -117,11 +117,17 @@ impl PointMappingStore for InMemoryPointMappingStore {
         if let Some(address) = update.address {
             mapping.address = address;
         }
+        if let Some(writable) = update.writable {
+            mapping.writable = writable;
+        }
         if let Some(scale) = update.scale {
             mapping.scale = Some(scale);
         }
         if let Some(offset) = update.offset {
             mapping.offset = Some(offset);
+        }
+        if let Some(protocol_detail) = update.protocol_detail {
+            mapping.protocol_detail = Some(protocol_detail);
         }
         Ok(Some(mapping.clone()))
     }

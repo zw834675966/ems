@@ -53,9 +53,6 @@ src/
 
 **可选环境变量**：
 - `EMS_HTTP_ADDR`：HTTP 监听地址，默认 `127.0.0.1:8080`
-- `EMS_REDIS_URL`：Redis 连接串（用于实时数据缓存；生产环境建议明确配置，不提供弱口令默认值）
-- `EMS_REDIS_LAST_VALUE_TTL_SECONDS`：last_value 过期秒数（可选，未设置或为 0 则不设置 TTL）
-- `EMS_REDIS_ONLINE_TTL_SECONDS`：online 过期秒数（默认 60 秒）
 - `EMS_MQTT_HOST`：MQTT Broker 主机，默认 `127.0.0.1`
 - `EMS_MQTT_PORT`：MQTT Broker 端口，默认 `1883`
 - `EMS_MQTT_USERNAME`：MQTT 用户名（可选）
@@ -77,13 +74,19 @@ src/
 
 ```bash
 export EMS_DATABASE_URL="postgresql://ems:<PASSWORD>@localhost:5432/ems"
-export EMS_REDIS_URL="redis://localhost:6379"
 export EMS_JWT_SECRET="your-secret"
 export EMS_JWT_ACCESS_TTL_SECONDS="3600"
 export EMS_JWT_REFRESH_TTL_SECONDS="2592000"
 export EMS_HTTP_ADDR="127.0.0.1:8080"
 
 cargo run -p ems-api
+```
+
+### 单文件分发（内嵌前端静态资源）：
+```bash
+pnpm -C web/admin build
+cargo build -p ems-api --release --features embedded-ui
+./target/release/ems-api
 ```
 
 前后端一键启动（开发）：
@@ -146,7 +149,7 @@ MQTT Broker → MqttSource → Normalizer → Pipeline → StorageWriter
 
 - 原始 MQTT 消息 → `RawEvent`
 - 根据点映射匹配 → `PointValue`（应用 scale 和 offset）
-- 写入 `realtime_store`（Redis）：最新值
+- 写入 `realtime_store`（内存）：最新值
 - 写入 `measurement_store`（PostgreSQL）：历史记录
 
 ### 启用采集
@@ -171,7 +174,7 @@ scripts/db-init.sh
 ```
 
 ## 依赖配置（本地）
-- Redis / MQTT 是否需要账号密码取决于你的本地服务配置（请避免弱口令）。
+- MQTT 是否需要账号密码取决于你的本地服务配置（请避免弱口令）。
 
 ## 接口说明
 

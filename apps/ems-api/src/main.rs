@@ -25,7 +25,7 @@
 //! │  ┌──────────────────────────────────────────────────────────────┐  │
 //! │  │                      存储层 (Storage Layer)                   │  │
 //! │  ├──────────────────────────────────────────────────────────────┤  │
-//! │  │  PostgreSQL 存储          │  Redis 存储      │  MQTT 消息     │  │
+//! │  │  PostgreSQL 存储          │  内存/时序存储    │  MQTT 消息     │  │
 //! │  │  - 用户/项目/设备/测点    │  - 实时数据缓存   │  - 控制指令    │  │
 //! │  │  - 历史测量数据          │  - 在线状态缓存   │  - 回执监听    │  │
 //! │  │  - 控制指令/审计日志     │                  │                │  │
@@ -55,7 +55,6 @@
 //! |--------|------|--------|--------|
 //! | `EMS_WEB_ADMIN` | 前端启动模式 | `off`/`on`/`only` | `off` |
 //! | `DATABASE_URL` | PostgreSQL 连接字符串 | - | 必填 |
-//! | `REDIS_URL` | Redis 连接字符串 | - | 必填 |
 //! | `JWT_SECRET` | JWT 签名密钥 | - | 必填 |
 //! | `HTTP_ADDR` | HTTP 监听地址 | - | `0.0.0.0:8080` |
 //!
@@ -85,7 +84,7 @@
 //!
 //! - `ems_auth`: 认证服务（JWT 令牌管理、用户认证）
 //! - `ems_config`: 应用配置管理
-//! - `ems_storage`: 存储层抽象和实现（PostgreSQL、Redis）
+//! - `ems_storage`: 存储层抽象和实现（PostgreSQL、InMemory）
 //! - `ems_control`: 设备控制服务（MQTT 指令分发）
 //! - `ems_telemetry`: 遥测和日志系统
 
@@ -96,10 +95,6 @@
 /// HTTP 请求处理器模块
 /// 包含所有 API 端点的具体处理逻辑（登录、项目管理、设备管理等）
 mod handlers;
-
-/// 数据采集模块
-/// 负责从 MQTT 接收遥测数据并写入存储层
-mod ingest;
 
 /// HTTP 中间件模块
 /// 包含请求上下文注入、认证校验等中间件
@@ -154,9 +149,6 @@ use ems_storage::{
     PgProjectStore,        // 项目信息存储
     PgSystemLogStore,      // 系统日志存储
     PgUserStore,           // 用户信息存储
-    // Redis 存储实现
-    RedisOnlineStore,   // 设备在线状态缓存
-    RedisRealtimeStore, // 实时数据缓存（最新值）
     // 数据库连接工具
     connect_pool, // 创建 PostgreSQL 连接池
 };
@@ -173,6 +165,26 @@ use tokio::process::Command; // 异步子进程管理（用于启动前端）
 
 // Tracing 日志宏
 use tracing::{info, warn}; // 结构化日志输出
+
+#[cfg(feature = "embedded-ui")]
+mod embedded_ui;
+
+fn build_cache_stores(
+    _config: &AppConfig,
+) -> Result<
+    (
+        Arc<dyn ems_storage::RealtimeStore>,
+        Arc<dyn ems_storage::OnlineStore>,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    Ok((
+        Arc::new(ems_storage::InMemoryRealtimeStore::new()),
+        Arc::new(ems_storage::InMemoryOnlineStore::new()),
+    ))
+}
+
+// --- WAL 逻辑已移至 ems-collector ---
 
 /// Web Admin 启动模式
 ///
@@ -426,17 +438,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 历史测量数据存储（PostgreSQL + TimescaleDB）
     let measurement_store: Arc<dyn ems_storage::MeasurementStore> =
         Arc::new(PgMeasurementStore::new(pool.clone()));
-    // 实时数据缓存（Redis）：存储测点的最新值
-    let realtime_store: Arc<dyn ems_storage::RealtimeStore> =
-        Arc::new(RedisRealtimeStore::connect_with_ttl(
-            &config.redis_url,
-            config.redis_last_value_ttl_seconds, // 最新值的过期时间（秒）
-        )?);
-    // 在线状态缓存（Redis）：存储设备在线状态
-    let online_store: Arc<dyn ems_storage::OnlineStore> = Arc::new(RedisOnlineStore::connect(
-        &config.redis_url,
-        config.redis_online_ttl_seconds, // 在线状态的过期时间（秒）
-    )?);
+    // 实时数据缓存（Redis/内存）：存储测点的最新值
+    // 在线状态缓存（Redis/内存）：存储设备在线状态
+    let (realtime_store, online_store) = build_cache_stores(&config)?;
 
     // --- 设备控制存储（PostgreSQL） ---
     // 控制指令存储：记录下发的控制指令
@@ -530,31 +534,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    // ========================================================================
-    // 9. 启动数据采集服务（MQTT 遥测数据接收）
-    // ========================================================================
-    //
-    // 数据采集服务订阅 MQTT 遥测主题，接收网关上报的测点数据：
-    // 1. 根据测点映射查找内部测点 ID
-    // 2. 将数据写入历史存储（PostgreSQL）
-    // 3. 更新实时缓存（Redis 最新值）
-    // 4. 更新设备在线状态
-    // 5. 使用 WAL 确保数据不丢失
-    let wal_store: Arc<dyn ems_storage::IngestWalStore> = Arc::new(
-        ems_storage::RedisIngestWalStore::connect(&config.redis_url)?,
-    );
-    let _ingest_handle = ingest::spawn_ingest(
-        &config,
-        gateway_store.clone(),
-        point_mapping_store.clone(),
-        point_store.clone(),
-        device_store.clone(),
-        measurement_store.clone(),
-        realtime_store.clone(),
-        online_store.clone(),
-        collection_strategy_store.clone(),
-        wal_store,
-    );
+    // --- 采集服务的职责已移至 ems-collector ---
 
     // ========================================================================
     // 10. 创建应用状态（AppState）
@@ -594,9 +574,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // - `.with_state(state)`: 注入应用状态
     // - `.layer(...)`: 添加请求上下文中间件（注入 request_id/trace_id）
     let api = routes::create_api_router();
-    let app = Router::new()
-        .merge(api.clone()) // 在根路径挂载 API
-        .nest("/api", api) // 在 /api 前缀下也挂载 API
+    let mut app = Router::new();
+
+    #[cfg(feature = "embedded-ui")]
+    {
+        // 内嵌前端：根路径留给 SPA，避免与 `/login` 等前端路由冲突
+        // 保留系统探针端点在根路径：/health /livez /readyz /metrics
+        app = app.merge(routes::create_system_router());
+    }
+
+    #[cfg(not(feature = "embedded-ui"))]
+    {
+        // 非内嵌：在根路径挂载 API（向后兼容）
+        app = app.merge(api.clone());
+    }
+
+    app = app.nest("/api", api); // 统一：在 /api 前缀下挂载 API
+
+    #[cfg(feature = "embedded-ui")]
+    {
+        app = app.fallback(embedded_ui::static_handler);
+    }
+
+    let app = app
         .with_state(state) // 注入应用状态
         .layer(axum_middleware::from_fn(middleware::request_context)); // 添加请求追踪中间件
 
@@ -624,7 +624,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// 监听系统终止信号（SIGTERM/SIGINT）
 ///
-/// 当 Kubernetes、Docker 或用户发送终止信号时，此函数返回，
+/// 当 Kubernetes、Systemd 或用户发送终止信号时，此函数返回，
 /// 触发 Axum 服务器的优雅停机流程。
 async fn shutdown_signal() {
     use tokio::signal;

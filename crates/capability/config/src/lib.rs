@@ -16,9 +16,6 @@ pub enum ConfigError {
 pub struct AppConfig {
     pub http_addr: String,
     pub database_url: String,
-    pub redis_url: String,
-    pub redis_last_value_ttl_seconds: Option<u64>,
-    pub redis_online_ttl_seconds: u64,
     pub mqtt_host: String,
     pub mqtt_port: u16,
     pub mqtt_username: Option<String>,
@@ -66,11 +63,6 @@ impl AppConfig {
         let jwt_access_ttl_seconds = read_u64("EMS_JWT_ACCESS_TTL_SECONDS")?;
         let jwt_refresh_ttl_seconds = read_u64("EMS_JWT_REFRESH_TTL_SECONDS")?;
         let http_addr = env::var("EMS_HTTP_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
-        let redis_url = env::var("EMS_REDIS_URL")
-            .map_err(|_| ConfigError::Missing("EMS_REDIS_URL".to_string()))?;
-        let redis_last_value_ttl_seconds =
-            read_optional_u64("EMS_REDIS_LAST_VALUE_TTL_SECONDS")?.filter(|value| *value > 0);
-        let redis_online_ttl_seconds = read_u64_with_default("EMS_REDIS_ONLINE_TTL_SECONDS", 60)?;
         let mqtt_host = env::var("EMS_MQTT_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
         let mqtt_port = read_u16_with_default("EMS_MQTT_PORT", 1883)?;
         let mqtt_username = read_optional("EMS_MQTT_USERNAME");
@@ -111,9 +103,6 @@ impl AppConfig {
         Ok(Self {
             http_addr,
             database_url,
-            redis_url,
-            redis_last_value_ttl_seconds,
-            redis_online_ttl_seconds,
             mqtt_host,
             mqtt_port,
             mqtt_username,
@@ -188,17 +177,6 @@ fn read_optional(key: &str) -> Option<String> {
     match env::var(key) {
         Ok(value) if !value.is_empty() => Some(value),
         _ => None,
-    }
-}
-
-fn read_optional_u64(key: &str) -> Result<Option<u64>, ConfigError> {
-    match env::var(key) {
-        Ok(value) if value.is_empty() => Ok(None),
-        Ok(value) => value
-            .parse::<u64>()
-            .map(Some)
-            .map_err(|_| ConfigError::Invalid(key.to_string(), value)),
-        Err(_) => Ok(None),
     }
 }
 

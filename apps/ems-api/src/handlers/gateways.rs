@@ -609,8 +609,8 @@ fn validate_protocol_config(protocol_type: &str, config_str: Option<&str>) -> Re
 /// `POST /projects/{project_id}/gateways/{gateway_id}/test`
 ///
 /// # 功能描述
-/// 手动测试网关的连接状态，根据网关的协议类型执行相应的测试。
-/// 目前仅支持 Modbus TCP 协议的测试。
+/// 手动测试网关的连接状态。
+/// 改为通用的 TCP 连接测试，不再区分协议类型。只要配置了 host 和 port，就尝试建立 TCP 连接。
 ///
 /// # 认证与授权
 /// - **认证**：通过 `require_project_scope` 验证 Bearer token
@@ -629,20 +629,12 @@ fn validate_protocol_config(protocol_type: &str, config_str: Option<&str>) -> Re
 ///   "error": null
 /// }
 /// ```
-///
-/// # 错误响应
-/// - `400 BAD REQUEST`：不支持的协议类型
-/// - `401 UNAUTHORIZED`：Bearer token 无效或缺失
-/// - `403 FORBIDDEN`：项目不属于当前租户
-/// - `404 NOT FOUND`：网关不存在
-/// - `500 INTERNAL SERVER ERROR`：存储层或测试执行失败
 pub async fn test_gateway(
     State(state): State<AppState>,
     Path(path): Path<GatewayPath>,
     headers: HeaderMap,
 ) -> Response {
     use api_contract::TestGatewayResponse;
-    use std::time::Instant;
 
     let ctx = match require_project_scope(&state, &headers, &path.project_id).await {
         Ok(ctx) => ctx,
@@ -665,130 +657,108 @@ pub async fn test_gateway(
 
     let tested_at_ms = chrono::Utc::now().timestamp_millis();
 
-    // 根据协议类型执行测试
-    let result = match gateway.protocol_type.as_str() {
-        "modbus_tcp" => {
-            // 解析 Modbus 配置
-            let config: ems_protocol::ModbusTcpConfig = match gateway.protocol_config {
-                Some(ref cfg_str) => match serde_json::from_str(cfg_str) {
-                    Ok(cfg) => cfg,
-                    Err(e) => {
-                        return (
-                            StatusCode::OK,
-                            Json(ApiResponse::success(TestGatewayResponse {
-                                success: false,
-                                latency_ms: None,
-                                error: Some(format!("配置解析失败: {}", e)),
-                                tested_at_ms,
-                            })),
-                        )
-                            .into_response();
-                    }
-                },
-                None => {
-                    return (
-                        StatusCode::OK,
-                        Json(ApiResponse::success(TestGatewayResponse {
-                            success: false,
-                            latency_ms: None,
-                            error: Some("网关未配置协议参数".to_string()),
-                            tested_at_ms,
-                        })),
-                    )
-                        .into_response();
-                }
-            };
+    // 解析配置中的 host 和 port
+    // 优先尝试标准字段 "host" 和 "port"
+    let (host, port) = if let Some(ref config_str) = gateway.protocol_config {
+        match serde_json::from_str::<Value>(config_str) {
+            Ok(json) => {
+                let host = json
+                    .get("host")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let port = json.get("port").and_then(|v| v.as_u64()).map(|p| p as u16);
+                (host, port)
+            }
+            Err(_) => (None, None),
+        }
+    } else {
+        (None, None)
+    };
 
-            // 执行 Modbus TCP 测试
-            let start = Instant::now();
-            match test_modbus_connection(&config).await {
-                Ok(_) => {
-                    let latency = start.elapsed().as_millis() as i64;
+    if let (Some(host), Some(port)) = (host, port) {
+        // 执行 TCP 连接测试
+        match test_tcp_connection(&host, port).await {
+            Ok(latency) => {
+                // 更新在线状态
+                let _ = state
+                    .online_store
+                    .touch_gateway(&ctx, &path.project_id, &path.gateway_id, tested_at_ms)
+                    .await;
 
-                    // 更新在线状态
-                    let _ = state
-                        .online_store
-                        .touch_gateway(&ctx, &path.project_id, &path.gateway_id, tested_at_ms)
-                        .await;
+                // 清除错误记录
+                let _ = state
+                    .online_store
+                    .report_resource_error(&ctx, &path.project_id, &path.gateway_id, "")
+                    .await;
 
-                    // 清除错误记录 (使用空字符串表示清除)
-                    let _ = state
-                        .online_store
-                        .report_resource_error(&ctx, &path.project_id, &path.gateway_id, "")
-                        .await;
-
-                    TestGatewayResponse {
+                (
+                    StatusCode::OK,
+                    Json(ApiResponse::success(TestGatewayResponse {
                         success: true,
                         latency_ms: Some(latency),
                         error: None,
                         tested_at_ms,
-                    }
-                }
-                Err(e) => {
-                    // 记录错误
-                    let error_msg = e.to_string();
-                    let _ = state
-                        .online_store
-                        .report_resource_error(&ctx, &path.project_id, &path.gateway_id, &error_msg)
-                        .await;
+                    })),
+                )
+                    .into_response()
+            }
+            Err(e) => {
+                // 记录错误
+                let _ = state
+                    .online_store
+                    .report_resource_error(&ctx, &path.project_id, &path.gateway_id, &e)
+                    .await;
 
-                    TestGatewayResponse {
+                (
+                    StatusCode::OK,
+                    Json(ApiResponse::success(TestGatewayResponse {
                         success: false,
                         latency_ms: None,
-                        error: Some(error_msg),
+                        error: Some(e),
                         tested_at_ms,
-                    }
-                }
+                    })),
+                )
+                    .into_response()
             }
         }
-        _ => TestGatewayResponse {
-            success: false,
-            latency_ms: None,
-            error: Some(format!("暂不支持 {} 协议的测试", gateway.protocol_type)),
-            tested_at_ms,
-        },
-    };
-
-    (StatusCode::OK, Json(ApiResponse::success(result))).into_response()
+    } else {
+        // 无法解析出 host/port，返回错误
+        (
+            StatusCode::OK,
+            Json(ApiResponse::success(TestGatewayResponse {
+                success: false,
+                latency_ms: None,
+                error: Some("网关配置缺少 'host' 或 'port'，无法进行连接测试".to_string()),
+                tested_at_ms,
+            })),
+        )
+            .into_response()
+    }
 }
 
-/// 测试 Modbus TCP 连接
+/// 通用 TCP 连接测试
 ///
-/// 尝试连接到 Modbus TCP 服务器并读取一个寄存器以验证连接。
-async fn test_modbus_connection(
-    config: &ems_protocol::ModbusTcpConfig,
-) -> Result<(), ems_protocol::ProtocolError> {
-    use tokio_modbus::prelude::*;
+/// 尝试建立 TCP 连接以验证网络连通性。
+/// 只要连接成功即视为通过（Layer 4），不进行协议层（Layer 7）握手。
+async fn test_tcp_connection(host: &str, port: u16) -> Result<i64, String> {
+    use std::time::Instant;
+    use tokio::net::TcpStream;
+    use tokio::time::{Duration, timeout};
 
-    let socket_addr = format!("{}:{}", config.host, config.port);
-    let socket_addr = socket_addr
-        .parse()
-        .map_err(|e| ems_protocol::ProtocolError::Connection(format!("Invalid address: {}", e)))?;
+    let addr = format!("{}:{}", host, port);
+    let start = Instant::now();
 
-    // 设置 5 秒超时
-    let timeout = std::time::Duration::from_secs(5);
-
-    // 尝试连接
-    let connect_future = tokio_modbus::client::tcp::connect(socket_addr);
-    let mut ctx = match tokio::time::timeout(timeout, connect_future).await {
-        Ok(Ok(ctx)) => ctx,
-        Ok(Err(e)) => {
-            return Err(ems_protocol::ProtocolError::Connection(e.to_string()));
+    // 设置 3 秒超时
+    // 为什么是 3s？局域网内通常 <10ms，云主机 <200ms。
+    // 如果 3s 都不通，大概率是物理不通或防火墙拦截。
+    let connect_future = TcpStream::connect(&addr);
+    match timeout(Duration::from_secs(3), connect_future).await {
+        Ok(Ok(_stream)) => {
+            // 连接成功，_stream 会在作用域结束时自动关闭（发送 FIN）
+            // 这是符合预期的探测行为
+            Ok(start.elapsed().as_millis() as i64)
         }
-        Err(_) => {
-            return Err(ems_protocol::ProtocolError::Timeout(
-                "Connection timeout".to_string(),
-            ));
-        }
-    };
-
-    // 尝试读取一个保持寄存器 (地址 0)
-    let read_future = ctx.read_holding_registers(0, 1);
-    match tokio::time::timeout(timeout, read_future).await {
-        Ok(Ok(_)) => Ok(()),
-        Ok(Err(e)) => Err(ems_protocol::ProtocolError::Modbus(e.to_string())),
-        Err(_) => Err(ems_protocol::ProtocolError::Timeout(
-            "Read timeout".to_string(),
-        )),
+        Ok(Err(e)) => Err(format!("连接被拒绝或网络不可达: {}", e)),
+        Err(_) => Err("连接超时 (3s)".to_string()),
     }
 }

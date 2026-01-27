@@ -295,7 +295,49 @@ pub async fn test_point(
         match config_res {
             Ok(mut source) => {
                 let address_config = device.address_config.as_deref().unwrap_or("{}");
-                let protocol_detail = point.protocol_detail.as_deref().unwrap_or("{}");
+                let mut protocol_detail = point.protocol_detail.as_deref().unwrap_or("").trim().to_string();
+                if protocol_detail.is_empty() {
+                    match state
+                        .point_mapping_store
+                        .list_point_mappings(&ctx, &path.project_id)
+                        .await
+                    {
+                        Ok(mappings) => {
+                            let mut selected = None;
+                            for mapping in mappings {
+                                if mapping.point_id != point.point_id || mapping.source_type != "modbus" {
+                                    continue;
+                                }
+                                match &selected {
+                                    None => selected = Some(mapping),
+                                    Some(current) => {
+                                        if current.writable && !mapping.writable {
+                                            selected = Some(mapping);
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(mapping) = selected {
+                                if let Some(detail) = mapping.protocol_detail {
+                                    protocol_detail = detail.trim().to_string();
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            result.error = Some(format!("Failed to load point mappings: {}", err));
+                            result.latency_ms = start.elapsed().as_millis() as i64;
+                            return (StatusCode::OK, Json(ApiResponse::success(result))).into_response();
+                        }
+                    }
+                }
+
+                if protocol_detail.is_empty() {
+                    result.error = Some(
+                        "Missing Modbus protocol_detail. Configure it in Point Mappings.".to_string(),
+                    );
+                    result.latency_ms = start.elapsed().as_millis() as i64;
+                    return (StatusCode::OK, Json(ApiResponse::success(result))).into_response();
+                }
 
                 let task_res = source.add_task_from_config(
                     &ctx.tenant_id,
@@ -304,7 +346,7 @@ pub async fn test_point(
                     &device.device_id,
                     &point.point_id,
                     address_config,
-                    protocol_detail,
+                    &protocol_detail,
                     None,
                     None,
                 );

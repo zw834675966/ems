@@ -3,6 +3,7 @@ use domain::{PointValue, PointValueData, TenantContext};
 use ems_storage::{MeasurementStore, RealtimeStore};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 /// 写入结果（最小占位）。
@@ -130,24 +131,24 @@ struct PipelineState {
     dedup: DedupState,
 }
 
-struct PipelineInner {
-    writer: Arc<dyn PointValueWriter>,
+struct PipelineInner<W: PointValueWriter> {
+    writer: Arc<W>,
     config: PipelineConfig,
     state: Mutex<PipelineState>,
 }
 
 /// Pipeline 入口（MVP）。
 #[derive(Clone)]
-pub struct Pipeline {
-    inner: Arc<PipelineInner>,
+pub struct Pipeline<W: PointValueWriter> {
+    inner: Arc<PipelineInner<W>>,
 }
 
-impl Pipeline {
-    pub fn new(writer: Arc<dyn PointValueWriter>) -> Self {
+impl<W: PointValueWriter> Pipeline<W> {
+    pub fn new(writer: Arc<W>) -> Self {
         Self::with_config(writer, PipelineConfig::default())
     }
 
-    pub fn with_config(writer: Arc<dyn PointValueWriter>, config: PipelineConfig) -> Self {
+    pub fn with_config(writer: Arc<W>, config: PipelineConfig) -> Self {
         let config = config.sanitized();
         let inner = PipelineInner {
             writer,
@@ -247,6 +248,12 @@ impl Pipeline {
                     if attempt > self.inner.config.max_retries {
                         return Err(err);
                     }
+
+                    // 失败重试增加轻量退避，避免数据库短时故障时 tight-loop 放大压力。
+                    // 仅在失败路径生效，成功路径不受影响。
+                    let exp = (attempt.saturating_sub(1)).min(6) as u32; // 1..=64 倍
+                    let backoff_ms = 25u64.saturating_mul(1u64 << exp).min(500);
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
                 }
             }
         }
