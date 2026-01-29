@@ -97,7 +97,13 @@ const ElButtonStub = defineComponent({
     return () =>
       h(
         "button",
-        { disabled: props.disabled, onClick: () => emit("click") },
+        {
+          disabled: props.disabled || props.loading,
+          onClick: () => {
+            if (props.disabled || props.loading) return;
+            emit("click");
+          }
+        },
         slots.default?.()
       );
   }
@@ -198,9 +204,11 @@ describe("EmsGateways view", () => {
     crudState.filteredData.value = [
       {
         gatewayId: "gateway-1",
+        projectId: "project-1",
         name: "Gateway One",
         status: "online",
-        protocolType: "mqtt"
+        protocolType: "modbus_tcp",
+        protocolConfig: JSON.stringify({ host: "127.0.0.1", port: 502 })
       }
     ];
     testGateway.mockResolvedValue({
@@ -225,9 +233,41 @@ describe("EmsGateways view", () => {
     await testButton?.trigger("click");
     await flushPromises();
 
-    expect(testGateway).toHaveBeenCalledWith("", "gateway-1");
+    expect(testGateway).toHaveBeenCalledWith("project-1", "gateway-1");
     expect(crudState.fetchList).toHaveBeenCalled();
     const { ElMessage } = await import("element-plus");
     expect(ElMessage.success).toHaveBeenCalledWith("测试成功: 延迟 12ms");
+  });
+
+  it("MQTT 网关的测试按钮应禁用", async () => {
+    crudState.filteredData.value = [
+      {
+        gatewayId: "gateway-2",
+        projectId: "project-1",
+        name: "Gateway Two",
+        status: "online",
+        protocolType: "mqtt"
+      }
+    ];
+
+    const GatewaysView = (await import("../gateways/index.vue")).default;
+    const wrapper = mount(GatewaysView, {
+      global: {
+        stubs: globalStubs,
+        directives: {
+          loading: () => {}
+        }
+      }
+    });
+
+    const testButton = wrapper
+      .findAll("button")
+      .find(btn => btn.text().trim() === "测试");
+    expect(testButton).toBeTruthy();
+    expect(testButton?.attributes("disabled")).toBeDefined();
+
+    await testButton?.trigger("click");
+    await flushPromises();
+    expect(testGateway).not.toHaveBeenCalled();
   });
 });

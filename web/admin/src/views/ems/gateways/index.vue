@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, reactive, nextTick } from "vue";
+import { onMounted, onBeforeUnmount, ref, reactive, nextTick } from "vue";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import dayjs from "dayjs";
 import {
@@ -10,7 +10,6 @@ import {
   testGateway,
   type GatewayDto
 } from "@/api/ems/gateways";
-import { Loading } from "@element-plus/icons-vue";
 import EmsProjectSelector from "@/components/EmsProjectSelector/index.vue";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import { useCrud } from "@/components/ReCrud/useCrud";
@@ -26,6 +25,9 @@ defineOptions({
 });
 
 const projectId = ref("");
+const nowMs = ref(Date.now());
+const OFFLINE_THRESHOLD_MS = 60_000;
+let nowTimer: number | undefined;
 
 // 使用 useCrud，增加 watchSource 支持自动化加载
 const {
@@ -51,9 +53,9 @@ const {
 // 手动监听 projecId 变化
 import { watch } from "vue";
 watch(projectId, () => {
-    if (projectId.value) {
-        handleFetchWithAutoTest();
-    }
+  if (projectId.value) {
+    fetchList();
+  }
 });
 
 const dialogVisible = ref(false);
@@ -61,9 +63,13 @@ const isEdit = ref(false);
 const currentId = ref("");
 const formRef = ref<FormInstance>();
 const testingGateways = ref<Set<string>>(new Set());
-// 自动测试状态
-const autoTesting = ref(false);
-const autoTestProgress = ref("");
+
+const isGatewayOnline = (row: GatewayDto) => {
+  if (row.lastError) return false;
+  if (!row.lastSeenAtMs) return false;
+  const delta = nowMs.value - row.lastSeenAtMs;
+  return delta >= 0 && delta <= OFFLINE_THRESHOLD_MS;
+};
 
 const form = reactive({
   name: "",
@@ -138,122 +144,82 @@ const handleEdit = (row: GatewayDto) => {
   });
 };
 
-/**
- * 检查网关是否有有效的 Host 配置，用于决定是否进行测试
- */
-const hasValidConfig = (row: GatewayDto): boolean => {
-  if (!row.protocolConfig) return false;
+const parseGatewayHostPort = (row: GatewayDto) => {
+  if (!row.protocolConfig) return null;
   try {
-    const cfg = JSON.parse(row.protocolConfig);
-    return !!(cfg.host || cfg.modbusHost || cfg.tcpClientHost);
+    const json = JSON.parse(row.protocolConfig);
+    const host =
+      typeof json.host === "string" ? (json.host as string).trim() : "";
+    const portRaw = json.port;
+    const port =
+      typeof portRaw === "number"
+        ? portRaw
+        : typeof portRaw === "string"
+          ? Number(portRaw)
+          : NaN;
+    if (!host || !Number.isFinite(port) || port <= 0) return null;
+    return { host, port: Math.floor(port) };
   } catch {
+    return null;
+  }
+};
+
+const getTestDisabledReason = (row: GatewayDto) => {
+  // 后端目前仅支持根据 protocol_config 中的 host/port 做 TCP 连通性探测
+  if (row.protocolType === "tcp_server") {
+    return "TCP Server 为本地监听模式，暂无可用的连接测试";
+  }
+  if (row.protocolType === "mqtt") {
+    return "MQTT 未配置 broker 地址/端口，暂无可用的连接测试";
+  }
+  if (!parseGatewayHostPort(row)) {
+    return "网关配置缺少 host/port，无法测试";
+  }
+  return "";
+};
+
+const canTestGateway = (row: GatewayDto) => {
+  if (row.protocolType === "mqtt" || row.protocolType === "tcp_server")
     return false;
-  }
+  return !!parseGatewayHostPort(row);
 };
 
-/**
- * 静默测试单个网关（不刷新全表，仅更新当前行）
- */
-const performSilentTest = async (row: GatewayDto) => {
-  if (!projectId.value || !row.gatewayId) return;
-  
-  // 仅更新当前行的状态为 "测试中" 视觉反馈
-  // 这里我们不改变 row.online，而是利用 testingGateways 来控制加载状态或显示
-  testingGateways.value.add(row.gatewayId);
-  
-  try {
-    const res = await testGateway(projectId.value, row.gatewayId);
-    if (res.success && res.data) {
-      const result = res.data;
-      // 直接修改本地数据，避免全表刷新
-      if (result.success) {
-        row.online = true;
-        row.lastSeenAtMs = result.testedAtMs;
-        row.lastError = undefined; // 清除错误
-      } else {
-        // 如果物理连接失败，标记为离线
-        row.online = false;
-        row.lastError = result.error || "连接测试失败";
-      }
-    }
-  } catch (e) {
-    // 保持原有状态或标记未知
-  } finally {
-    testingGateways.value.delete(row.gatewayId);
-  }
-};
-
-/**
- * 执行自动批量测试（带并发控制）
- */
-const executeAutoTest = async (gateways: GatewayDto[]) => {
-  if (gateways.length === 0) return;
-  
-  autoTesting.value = true;
-  autoTestProgress.value = "正在检测网关连通性...";
-  
-  const CONCURRENCY = 3; // 最大并发数
-  const queue = [...gateways];
-  
-  // 过滤掉没有配置 HOST 的，避免无意义请求
-  const validQueue = queue.filter(g => hasValidConfig(g));
-  let completed = 0;
-  const total = validQueue.length;
-
-  const worker = async () => {
-    while (validQueue.length > 0) {
-      const gateway = validQueue.shift();
-      if (!gateway) break;
-      
-      await performSilentTest(gateway);
-      completed++;
-    }
-  };
-
-  try {
-    await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
-  } finally {
-    autoTesting.value = false;
-    autoTestProgress.value = "";
-    // 可选：结束后提示
-    // ElMessage.info(`网关检测完成: ${completed}/${total}`);
-  }
-};
-
-// 包装原始的 fetchList 以触发自动测试
-const handleFetchWithAutoTest = async () => {
-  await fetchList();
-  // 数据加载完成后，启动自动测试
-  if (filteredData.value && filteredData.value.length > 0) {
-    executeAutoTest(filteredData.value);
-  }
+const getTestingKey = (row: GatewayDto) => {
+  const pid = row.projectId || projectId.value || "";
+  return pid ? `${pid}:${row.gatewayId}` : row.gatewayId;
 };
 
 const handleTest = async (row: GatewayDto) => {
-  testingGateways.value.add(row.gatewayId);
+  const pid = (row.projectId || projectId.value || "").trim();
+  if (!pid) {
+    ElMessage.warning("请先选择项目");
+    return;
+  }
+  if (!canTestGateway(row)) {
+    ElMessage.warning(getTestDisabledReason(row) || "当前网关不支持测试");
+    return;
+  }
+
+  const key = getTestingKey(row);
+  if (testingGateways.value.has(key)) return;
+  testingGateways.value.add(key);
   try {
-    const res = await testGateway(projectId.value, row.gatewayId);
+    const res = await testGateway(pid, row.gatewayId);
     if (res.success && res.data) {
       const result = res.data;
       if (result.success) {
         ElMessage.success(`测试成功: 延迟 ${result.latencyMs}ms`);
-        // 手动测试成功，立即更新视图状态
-        row.online = true;
-        row.lastSeenAtMs = result.testedAtMs;
-        row.lastError = undefined;
       } else {
         ElMessage.error(`测试失败: ${result.error}`);
-        row.online = false;
-        row.lastError = result.error;
       }
       await fetchList();
     } else {
-      ElMessage.error("测试请求失败");
+      ElMessage.error(res.error?.message ?? "测试请求失败");
     }
   } catch {
     ElMessage.error("测试请求异常");
   } finally {
-    testingGateways.value.delete(row.gatewayId);
+    testingGateways.value.delete(key);
   }
 };
 
@@ -315,9 +281,17 @@ const submit = async () => {
 };
 
 onMounted(() => {
+  nowTimer = window.setInterval(() => {
+    nowMs.value = Date.now();
+  }, 1000);
+
   if (projectId.value) {
-    handleFetchWithAutoTest();
+    fetchList();
   }
+});
+
+onBeforeUnmount(() => {
+  if (nowTimer) window.clearInterval(nowTimer);
 });
 </script>
 
@@ -384,16 +358,11 @@ onMounted(() => {
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column
-              prop="online"
-              width="120"
-              align="center"
-            >
+            <el-table-column prop="online" width="120" align="center">
               <template #header>
-                 <div class="flex-c gap-1 justify-center">
-                    <span>实时状态</span>
-                    <el-icon v-if="autoTesting" class="is-loading text-primary"><Loading /></el-icon>
-                 </div>
+                <div class="flex-c gap-1 justify-center">
+                  <span>实时状态</span>
+                </div>
               </template>
               <template #default="{ row }">
                 <el-tooltip
@@ -402,35 +371,35 @@ onMounted(() => {
                   placement="top"
                   effect="dark"
                 >
-                  <div class="flex-c gap-2 cursor-help">
+                <div class="flex-c gap-2 cursor-help">
                     <span
                       class="status-dot"
-                      :class="row.online ? 'is-online' : 'is-error'"
+                      :class="isGatewayOnline(row) ? 'is-online' : 'is-error'"
                     />
                     <span
                       :class="
-                        row.online
+                        isGatewayOnline(row)
                           ? 'text-green-500 font-medium'
                           : 'text-red-500 font-medium'
                       "
                     >
-                      {{ row.online ? "在线" : "异常" }}
+                      {{ isGatewayOnline(row) ? "在线" : "异常" }}
                     </span>
                   </div>
                 </el-tooltip>
                 <div v-else class="flex-c gap-2">
                   <span
                     class="status-dot"
-                    :class="{ 'is-online': row.online }"
+                    :class="{ 'is-online': isGatewayOnline(row) }"
                   />
                   <span
                     :class="
-                      row.online
+                      isGatewayOnline(row)
                         ? 'text-green-500 font-medium'
                         : 'text-gray-400'
                     "
                   >
-                    {{ row.online ? "在线" : "离线" }}
+                    {{ isGatewayOnline(row) ? "在线" : "离线" }}
                   </span>
                 </div>
               </template>
@@ -458,15 +427,25 @@ onMounted(() => {
               align="center"
             >
               <template #default="{ row }">
-                <el-button
-                  link
-                  type="success"
-                  :icon="useRenderIcon('ep:connection')"
-                  :loading="testingGateways.has(row.gatewayId)"
-                  @click="handleTest(row)"
+                <el-tooltip
+                  :content="getTestDisabledReason(row)"
+                  :disabled="canTestGateway(row)"
+                  placement="top"
+                  effect="dark"
                 >
-                  测试
-                </el-button>
+                  <span>
+                    <el-button
+                      link
+                      type="success"
+                      :icon="useRenderIcon('ep:connection')"
+                      :loading="testingGateways.has(getTestingKey(row))"
+                      :disabled="!canTestGateway(row)"
+                      @click="handleTest(row)"
+                    >
+                      测试
+                    </el-button>
+                  </span>
+                </el-tooltip>
                 <el-button
                   link
                   type="primary"
